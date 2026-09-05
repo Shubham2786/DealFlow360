@@ -159,7 +159,7 @@ async function main() {
   for (const q of quotes) {
     const created = await prisma.quotation.create({
       data: {
-        number: q.number, customerId: q.customerId, salespersonId,
+        number: q.number, customerId: q.customerId, salespersonId, createdById: salespersonId,
         status: q.status as never,
         discountPct: new Prisma.Decimal(q.discountPct), marginPct: new Prisma.Decimal(q.marginPct),
         subtotal: new Prisma.Decimal(q.total), total: new Prisma.Decimal(q.total),

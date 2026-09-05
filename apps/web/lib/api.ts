@@ -56,7 +56,8 @@ export interface CurrentUser {
 }
 
 export interface DashboardMetrics {
-  kpis: {
+  variant: string; // USER | MANAGER | FINANCE | ADMIN
+  kpis: Partial<{
     activeDeals: number;
     draftQuotations: number;
     pendingApprovals: number;
@@ -66,9 +67,10 @@ export interface DashboardMetrics {
     overdueInvoices: number;
     totalCustomers: number;
     totalProducts: number;
+    totalUsers: number;
     revenue: number;
     pipelineValue: number;
-  };
+  }>;
   alerts: { severity: string; label: string; href: string }[];
   recentActivity: { id: string; action: string; message: string | null; actor: string | null; at: string }[];
   generatedAt: string;

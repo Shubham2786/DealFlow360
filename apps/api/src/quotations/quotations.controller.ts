@@ -46,13 +46,13 @@ export class QuotationsController {
   ) { }
 
   @Get()
-  list() {
-    return this.quotations.list();
+  list(@CurrentUser() user: AuthUser) {
+    return this.quotations.list(user);
   }
 
   @Get(':id')
-  get(@Param('id') id: string) {
-    return this.quotations.get(id);
+  get(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.quotations.get(id, user);
   }
 
   @Post()
@@ -62,6 +62,7 @@ export class QuotationsController {
     const quotation = await this.quotations.create({
       ...dto,
       salespersonId: dto.salespersonId ?? user.id,
+      createdById: user.id,
     });
     await this.audit.record({
       actorId: user.id,

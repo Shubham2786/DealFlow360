@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { InvoiceStatus, QuotationStatus } from '@dealflow/shared';
+import { InvoiceStatus, Permission, QuotationStatus, UserRole } from '@dealflow/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 
@@ -16,72 +16,101 @@ const ACTIVE_STATUSES: QuotationStatus[] = [
   QuotationStatus.INVOICED,
 ];
 
+export interface DashboardViewer {
+  id: string;
+  role: string;
+  permissions: string[];
+}
+
+export interface Alert {
+  severity: string;
+  label: string;
+  href: string;
+}
+
 @Injectable()
 export class DashboardService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
-  ) {}
+  ) { }
 
-  /** Aggregated KPIs, alerts and recent activity for the Sales Dashboard. */
-  async metrics() {
+  /**
+   * Role-aware dashboard. USER sees only their own deals; MANAGER/ADMIN see team-wide;
+   * FINANCE/ADMIN additionally see billing KPIs; ADMIN sees system totals.
+   * `variant` tells the frontend which layout to render.
+   */
+  async metrics(viewer: DashboardViewer) {
     const now = new Date();
+    const isTeam = viewer.role === UserRole.ADMIN || viewer.permissions.includes(Permission.DEAL_VIEW_TEAM);
+    const isFinance = viewer.role === UserRole.ADMIN || viewer.permissions.includes(Permission.FINANCE_DATA_VIEW);
+    const isAdmin = viewer.role === UserRole.ADMIN;
+    const variant = viewer.role;
 
-    const [
-      totalCustomers,
-      totalProducts,
+    // Deal queries are scoped to the viewer unless they have team visibility.
+    const dealScope = isTeam ? {} : { createdById: viewer.id };
+
+    const [draftQuotations, pendingApprovals, approvedDeals, activeDeals, pipelineAgg] =
+      await Promise.all([
+        this.prisma.quotation.count({ where: { ...dealScope, status: QuotationStatus.DRAFT } }),
+        this.prisma.quotation.count({ where: { ...dealScope, status: QuotationStatus.PENDING_APPROVAL } }),
+        this.prisma.quotation.count({ where: { ...dealScope, status: QuotationStatus.APPROVED } }),
+        this.prisma.quotation.count({ where: { ...dealScope, status: { in: ACTIVE_STATUSES } } }),
+        this.prisma.quotation.aggregate({ _sum: { total: true }, where: { ...dealScope, status: { in: ACTIVE_STATUSES } } }),
+      ]);
+
+    const kpis: Record<string, number> = {
+      activeDeals,
       draftQuotations,
       pendingApprovals,
       approvedDeals,
-      awaitingFulfillment,
-      activeDeals,
-      outstandingInvoices,
-      overdueInvoices,
-      revenueAgg,
-      recent,
-    ] = await Promise.all([
-      this.prisma.customer.count(),
-      this.prisma.product.count(),
-      this.prisma.quotation.count({ where: { status: QuotationStatus.DRAFT } }),
-      this.prisma.quotation.count({ where: { status: QuotationStatus.PENDING_APPROVAL } }),
-      this.prisma.quotation.count({ where: { status: QuotationStatus.APPROVED } }),
-      this.prisma.quotation.count({
-        where: {
-          status: { in: [QuotationStatus.APPROVED, QuotationStatus.CONVERTED_TO_FULFILLMENT] },
-        },
-      }),
-      this.prisma.quotation.count({ where: { status: { in: ACTIVE_STATUSES } } }),
-      this.prisma.invoice.count({
-        where: { status: { in: [InvoiceStatus.ISSUED, InvoiceStatus.PARTIALLY_PAID] } },
-      }),
-      this.prisma.invoice.count({ where: { status: InvoiceStatus.OVERDUE } }),
-      this.prisma.invoice.aggregate({
-        _sum: { paidAmount: true },
-        where: { status: { in: [InvoiceStatus.PAID, InvoiceStatus.PARTIALLY_PAID] } },
-      }),
-      this.audit.recent(12),
-    ]);
+      pipelineValue: Number(pipelineAgg._sum.total ?? 0),
+    };
 
-    const pipelineAgg = await this.prisma.quotation.aggregate({
-      _sum: { total: true },
-      where: { status: { in: ACTIVE_STATUSES } },
-    });
+    if (isTeam) {
+      kpis.awaitingFulfillment = await this.prisma.quotation.count({
+        where: { status: { in: [QuotationStatus.APPROVED, QuotationStatus.CONVERTED_TO_FULFILLMENT] } },
+      });
+    }
+
+    if (isFinance) {
+      const [outstanding, overdue, revenueAgg] = await Promise.all([
+        this.prisma.invoice.count({ where: { status: { in: [InvoiceStatus.ISSUED, InvoiceStatus.PARTIALLY_PAID] } } }),
+        this.prisma.invoice.count({ where: { status: InvoiceStatus.OVERDUE } }),
+        this.prisma.invoice.aggregate({
+          _sum: { paidAmount: true },
+          where: { status: { in: [InvoiceStatus.PAID, InvoiceStatus.PARTIALLY_PAID] } },
+        }),
+      ]);
+      kpis.outstandingInvoices = outstanding;
+      kpis.overdueInvoices = overdue;
+      kpis.revenue = Number(revenueAgg._sum.paidAmount ?? 0);
+    }
+
+    if (isAdmin) {
+      const [totalCustomers, totalProducts, totalUsers] = await Promise.all([
+        this.prisma.customer.count(),
+        this.prisma.product.count(),
+        this.prisma.user.count(),
+      ]);
+      kpis.totalCustomers = totalCustomers;
+      kpis.totalProducts = totalProducts;
+      kpis.totalUsers = totalUsers;
+    }
+
+    // Activity: own actions for a plain user; global for team/finance/admin.
+    const recent = isTeam || isFinance
+      ? await this.audit.recent(12)
+      : await this.prisma.auditEvent.findMany({
+        where: { actorId: viewer.id },
+        orderBy: { createdAt: 'desc' },
+        take: 12,
+      });
 
     return {
-      kpis: {
-        activeDeals,
-        draftQuotations,
-        pendingApprovals,
-        approvedDeals,
-        awaitingFulfillment,
-        outstandingInvoices,
-        overdueInvoices,
-        totalCustomers,
-        totalProducts,
-        revenue: Number(revenueAgg._sum.paidAmount ?? 0),
-        pipelineValue: Number(pipelineAgg._sum.total ?? 0),
-      },
-      alerts: this.buildAlerts({ pendingApprovals, overdueInvoices, awaitingFulfillment }),
+      variant,
+      kpis,
+      alerts: this.buildAlerts({ variant, isTeam, isFinance, kpis }),
       recentActivity: recent.map((e) => ({
         id: e.id,
         action: e.action,
@@ -94,29 +123,21 @@ export class DashboardService {
   }
 
   private buildAlerts(input: {
-    pendingApprovals: number;
-    overdueInvoices: number;
-    awaitingFulfillment: number;
-  }) {
-    const alerts: { severity: string; label: string; href: string }[] = [];
-    if (input.pendingApprovals > 0)
-      alerts.push({
-        severity: 'warning',
-        label: `${input.pendingApprovals} approval(s) pending`,
-        href: '/approvals',
-      });
-    if (input.overdueInvoices > 0)
-      alerts.push({
-        severity: 'critical',
-        label: `${input.overdueInvoices} overdue invoice(s)`,
-        href: '/invoices',
-      });
-    if (input.awaitingFulfillment > 0)
-      alerts.push({
-        severity: 'info',
-        label: `${input.awaitingFulfillment} deal(s) awaiting fulfillment`,
-        href: '/fulfillment',
-      });
+    variant: string;
+    isTeam: boolean;
+    isFinance: boolean;
+    kpis: Record<string, number>;
+  }): Alert[] {
+    const alerts: Alert[] = [];
+    const k = input.kpis;
+    if (input.isTeam && k.pendingApprovals > 0)
+      alerts.push({ severity: 'warning', label: `${k.pendingApprovals} approval(s) pending`, href: '/approvals' });
+    if (input.isTeam && (k.awaitingFulfillment ?? 0) > 0)
+      alerts.push({ severity: 'info', label: `${k.awaitingFulfillment} deal(s) awaiting fulfillment`, href: '/fulfillment' });
+    if (input.isFinance && (k.overdueInvoices ?? 0) > 0)
+      alerts.push({ severity: 'critical', label: `${k.overdueInvoices} overdue invoice(s)`, href: '/invoices' });
+    if (!input.isTeam && k.pendingApprovals > 0)
+      alerts.push({ severity: 'info', label: `${k.pendingApprovals} of your deal(s) awaiting approval`, href: '/quotations' });
     return alerts;
   }
 }

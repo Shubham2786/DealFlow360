@@ -1,8 +1,20 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { QuotationStatus } from '@dealflow/shared';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { Permission, QuotationStatus, UserRole } from '@dealflow/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { DealStateMachine } from './deal-state-machine';
+
+/** Minimal viewer context for ownership/visibility checks. */
+export interface Viewer {
+  id: string;
+  role: string;
+  permissions: string[];
+}
 
 export interface QuotationLineInput {
   productId: string;
@@ -14,6 +26,7 @@ export interface QuotationLineInput {
 export interface CreateQuotationInput {
   customerId: string;
   salespersonId?: string;
+  createdById?: string;
   discountPct?: number;
   expiresAt?: string;
   lines: QuotationLineInput[];
@@ -68,14 +81,22 @@ export class QuotationsService {
     return this.transition(id, QuotationStatus.DRAFT, actor, 'QUOTATION_REVISED');
   }
 
-  list() {
+  /** Team-wide visibility (managers/finance/admin) vs. own-only (plain users). */
+  private canViewAll(viewer?: Viewer): boolean {
+    if (!viewer) return false;
+    return viewer.role === UserRole.ADMIN || (viewer.permissions ?? []).includes(Permission.DEAL_VIEW_TEAM);
+  }
+
+  /** Lists deals scoped to the viewer: own only unless they can view the team. */
+  list(viewer?: Viewer) {
     return this.prisma.quotation.findMany({
+      where: this.canViewAll(viewer) ? undefined : { createdById: viewer?.id ?? '__none__' },
       orderBy: { createdAt: 'desc' },
       include: { customer: true, salesperson: { select: { id: true, name: true } } },
     });
   }
 
-  async get(id: string) {
+  async get(id: string, viewer?: Viewer) {
     const quotation = await this.prisma.quotation.findUnique({
       where: { id },
       include: {
@@ -86,6 +107,10 @@ export class QuotationsService {
       },
     });
     if (!quotation) throw new NotFoundException(`Quotation ${id} not found`);
+    // Ownership check: a plain user may only view their own deals.
+    if (!this.canViewAll(viewer) && quotation.createdById && quotation.createdById !== viewer?.id) {
+      throw new ForbiddenException('You do not have access to this deal');
+    }
     return quotation;
   }
 
@@ -152,6 +177,7 @@ export class QuotationsService {
         number,
         customerId: input.customerId,
         salespersonId: input.salespersonId,
+        createdById: input.createdById ?? input.salespersonId,
         discountPct: headerDiscount,
         subtotal,
         discountTotal,
