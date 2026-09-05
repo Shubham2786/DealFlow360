@@ -1,9 +1,10 @@
 # DealFlow360 — Codebase Documentation
 
-> Developer reference for the code built so far (Modules 1–4: foundation, database
-> bootstrap, API/web shells, Auth + RBAC). It explains **what** libraries/tools are used,
-> **why**, **what each function does**, and **how requests are routed and where functions
-> are used**. Updated as modules land.
+> Developer reference for the code built so far (foundation, DB bootstrap, API/web shells,
+> Auth + RBAC, Audit, Customers, Products, Quotations + lifecycle, Approvals, Invoices
+> read model, and the Sales + Deal Health dashboards). It explains **what** libraries/tools
+> are used, **why**, **what each function does**, and **how requests are routed and where
+> functions are used**. The full current schema is in §6. Updated as modules land.
 
 ---
 
@@ -270,14 +271,81 @@ POST /api/auth/refresh (df_refresh cookie)
 
 ## 6. Data Model (current)
 
-| Table | Purpose | Key columns |
-|-------|---------|-------------|
-| `users` | Accounts | `email` (unique), `passwordHash`, `role` (enum), `active` |
-| `refresh_tokens` | Session refresh with rotation/revocation | `tokenHash` (unique), `userId`, `expiresAt`, `revoked` |
-| `app_settings` | Key/value system settings (used later by Admin) | `key` (unique), `value` |
+Prisma schema: `prisma/schema.prisma`. Migrations: `init_auth` → `domain_dashboards` →
+`approvals`. Money columns use `Decimal`; they serialize to JSON **as strings**, so the
+web coerces them with `Number()`.
 
-Enums (`UserRole`, `QuotationStatus`, `FulfillmentStatus`, …) are declared in
-`schema.prisma` and mirrored in `packages/shared/src/enums.ts` so the DB and app agree.
+### 6.1 Tables
+
+| Table | Purpose | Key columns / constraints |
+|-------|---------|---------------------------|
+| `users` | Accounts | `email` (unique), `passwordHash`, `role` (`UserRole`), `active` |
+| `refresh_tokens` | Session refresh with rotation/revocation | `tokenHash` (unique), `userId` → users, `expiresAt`, `revoked` |
+| `app_settings` | Key/value system settings (Admin) | `key` (unique), `value` |
+| `customers` | Customer accounts | `name`, `segment` (`CustomerSegment`), `contactName/Email/Phone`, `active` |
+| `products` | Sellable catalog | `sku` (unique), `name`, `category`, `type` (`ProductType`), `basePrice` `Decimal(12,2)`, `taxRate`, `active` |
+| `quotations` | **Deal core** (aggregate root) | `number` (unique), `customerId` → customers, `salespersonId` → users, `status` (`QuotationStatus`), `subtotal/discountTotal/taxTotal/total` `Decimal(14,2)`, `discountPct`, `marginPct`, `expiresAt`; indexes on `status`, `customerId` |
+| `quotation_lines` | Line items | `quotationId` → quotations (cascade), `productId` → products, `qty`, `unitPrice`, `discountPct`, `taxRate`, `lineTotal`; index `quotationId` |
+| `approval_requests` | Approval workflow per deal | `quotationId` → quotations (cascade), `status` (`ApprovalRequestStatus`), `reason`; indexes `quotationId`, `status` |
+| `approval_steps` | Ordered steps in a request | `requestId` → approval_requests (cascade), `level`, `role` (`UserRole`), `status` (`ApprovalStepStatus`), `approverId` → users, `comment`, `decidedAt`; index `requestId` |
+| `invoices` | Customer invoices | `number` (unique), `customerId` → customers, `quotationId` → quotations, `status` (`InvoiceStatus`), `issueDate/dueDate`, `total`, `paidAmount`; indexes `status`, `customerId`, `dueDate` |
+| `audit_events` | Append-only activity log | `actorId/actorName`, `entityType`, `entityId`, `action`, `message`, `createdAt`; indexes `(entityType, entityId)`, `createdAt` |
+
+### 6.2 Relationships
+
+```text
+User 1─N RefreshToken
+User 1─N Quotation (salesperson)      User 1─N ApprovalStep (approver)
+Customer 1─N Quotation                Customer 1─N Invoice
+Quotation 1─N QuotationLine ─N:1 Product
+Quotation 1─N ApprovalRequest 1─N ApprovalStep
+Quotation 1─N Invoice
+(any entity) → AuditEvent (soft reference by entityType/entityId, no FK)
+```
+
+Cascades: deleting a quotation removes its lines and approval requests (and their steps).
+`AuditEvent` intentionally has **no FK** — it is an immutable log that must survive entity
+changes.
+
+### 6.3 Enums
+
+Declared in `schema.prisma` and mirrored in `packages/shared/src/enums.ts` (single source
+of truth for DB + app):
+`UserRole`, `QuotationStatus`, `ApprovalRequestStatus`, `ApprovalStepStatus`,
+`FulfillmentStatus`, `ReservationStatus`, `BackorderStatus`, `AllocationSource`,
+`SubscriptionStatus`, `InvoiceStatus`, `ProductType`, `BillingFrequency`,
+`CustomerSegment`. (Fulfillment/subscription/billing enums are defined ahead of their
+modules.)
+
+### 6.4 Modules & routes added since Auth
+
+All routes are under `/api` and guarded by `JwtAuthGuard` unless noted.
+
+| Module | Routes | Notes |
+|--------|--------|-------|
+| Audit (`audit/`) | — (internal `AuditService.record/recent`) | `@Global`; writes activity events |
+| Customers (`customers/`) | `GET/POST /customers`, `GET /customers/:id` | audits create |
+| Products (`products/`) | `GET/POST /products`, `GET /products/:id` | audits create |
+| Quotations (`quotations/`) | `GET/POST /quotations`, `GET /quotations/:id`, `POST /quotations/:id/submit\|cancel\|revise` | `QuotationsService.create` computes pricing/margin; `DealStateMachine` guards transitions; `submit` delegates to Approvals via `forwardRef` |
+| Approvals (`approvals/`) | `GET /approvals`, `GET /approvals/:id`, `POST /approvals/:id/approve\|reject\|request-changes` | decision routes also use `RolesGuard` (`SALES_MANAGER/FINANCE/ADMIN`); `ApprovalRuleEngine.computeChain`; decisions drive quotation status |
+| Invoices (`invoices/`) | `GET /invoices`, `GET /invoices/:id` | read-only for now |
+| Analytics (`analytics/`) | `GET /dashboard/metrics`, `GET /deal-health` | `DashboardService.metrics` (KPIs/alerts/activity); `DealHealthService.overview` (anomalies) |
+
+**Key functions added:**
+- `DealStateMachine.canTransition/nextStates/assertTransition` — authoritative lifecycle
+  guard (`quotations/deal-state-machine.ts`).
+- `QuotationsService.transition/submit/cancel/revise` and `create` (line + header pricing,
+  margin from cost≈70% of base).
+- `ApprovalRuleEngine.computeChain(facts)` → `{ chain, reasons }` (auto-approve or ordered
+  approver roles).
+- `ApprovalsService.submitQuotation/createForQuotation/approve/reject/requestChanges` —
+  builds chains, advances steps, and transitions the quotation.
+- `DashboardService.metrics` and `DealHealthService.overview` — read-only aggregation over
+  live data (no independent copies).
+
+**Web pages added:** `/quotations`, `/quotations/:id`, `/approvals`, `/approvals/:id`,
+`/deal-health`; shared UI in `components/ui.tsx` (`StatTile`, `Badge`, `DealStatusBadge`,
+`LifecycleStepper`, `SectionCard`, `EmptyState`).
 
 ---
 
