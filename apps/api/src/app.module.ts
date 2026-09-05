@@ -7,6 +7,7 @@ import { AuditModule } from './audit/audit.module';
 import { CustomersModule } from './customers/customers.module';
 import { ProductsModule } from './products/products.module';
 import { QuotationsModule } from './quotations/quotations.module';
+import { ApprovalsModule } from './approvals/approvals.module';
 import { InvoicesModule } from './invoices/invoices.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 
@@ -19,6 +20,7 @@ import { AnalyticsModule } from './analytics/analytics.module';
     CustomersModule,
     ProductsModule,
     QuotationsModule,
+    ApprovalsModule,
     InvoicesModule,
     AnalyticsModule,
   ],

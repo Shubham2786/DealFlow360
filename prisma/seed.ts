@@ -174,6 +174,21 @@ async function main() {
     ],
   });
 
+  // ---- A pending approval request for Q-1003 (discount 18% → Manager + Finance) ----
+  await prisma.approvalRequest.create({
+    data: {
+      quotationId: quoteByNumber['Q-1003'],
+      status: 'PENDING',
+      reason: 'Discount 18% / margin 22% requires manager review; Finance approval required',
+      steps: {
+        create: [
+          { level: 1, role: 'SALES_MANAGER', status: 'PENDING' },
+          { level: 2, role: 'FINANCE', status: 'PENDING' },
+        ],
+      },
+    },
+  });
+
   // ---- Recent activity feed ----
   await prisma.auditEvent.createMany({
     data: [

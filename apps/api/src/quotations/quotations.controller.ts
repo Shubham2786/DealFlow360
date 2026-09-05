@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, forwardRef, Get, Inject, Param, Post, UseGuards } from '@nestjs/common';
 import {
   IsArray,
   IsInt,
@@ -14,6 +14,7 @@ import { AuditService } from '../audit/audit.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser, type AuthUser } from '../auth/decorators/current-user.decorator';
 import { QuotationsService } from './quotations.service';
+import { ApprovalsService } from '../approvals/approvals.service';
 
 class QuotationLineDto {
   @IsString() productId!: string;
@@ -37,6 +38,8 @@ export class QuotationsController {
   constructor(
     private readonly quotations: QuotationsService,
     private readonly audit: AuditService,
+    @Inject(forwardRef(() => ApprovalsService))
+    private readonly approvals: ApprovalsService,
   ) { }
 
   @Get()
@@ -68,7 +71,8 @@ export class QuotationsController {
 
   @Post(':id/submit')
   submit(@Param('id') id: string, @CurrentUser() user: AuthUser) {
-    return this.quotations.submit(id, user);
+    // Submit routes the deal to approval and builds the required approval chain.
+    return this.approvals.submitQuotation(id, user);
   }
 
   @Post(':id/cancel')

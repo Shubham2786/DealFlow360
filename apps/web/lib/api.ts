@@ -119,7 +119,46 @@ export const api = {
     cancel: (id: string) => apiFetch(`/quotations/${id}/cancel`, { method: 'POST' }),
     revise: (id: string) => apiFetch(`/quotations/${id}/revise`, { method: 'POST' }),
   },
+
+  approvals: {
+    list: (status?: string) =>
+      apiFetch<ApprovalRequestItem[]>(`/approvals${status ? `?status=${status}` : ''}`),
+    get: (id: string) => apiFetch<ApprovalRequestItem>(`/approvals/${id}`),
+    approve: (id: string, comment?: string) =>
+      apiFetch(`/approvals/${id}/approve`, { method: 'POST', body: JSON.stringify({ comment }) }),
+    reject: (id: string, comment?: string) =>
+      apiFetch(`/approvals/${id}/reject`, { method: 'POST', body: JSON.stringify({ comment }) }),
+    requestChanges: (id: string, comment?: string) =>
+      apiFetch(`/approvals/${id}/request-changes`, { method: 'POST', body: JSON.stringify({ comment }) }),
+  },
 };
+
+export interface ApprovalStepItem {
+  id: string;
+  level: number;
+  role: string;
+  status: string;
+  comment: string | null;
+  decidedAt: string | null;
+  approver: { id: string; name: string } | null;
+}
+
+export interface ApprovalRequestItem {
+  id: string;
+  status: string;
+  reason: string | null;
+  createdAt: string;
+  quotation: {
+    id: string;
+    number: string;
+    total: string;
+    discountPct: string;
+    marginPct: string;
+    status: string;
+    customer: { id: string; name: string } | null;
+  };
+  steps: ApprovalStepItem[];
+}
 
 export interface QuotationListItem {
   id: string;

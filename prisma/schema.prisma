@@ -35,6 +35,7 @@ model User {
   updatedAt    DateTime       @updatedAt
   refreshTokens RefreshToken[]
   quotations    Quotation[]
+  approvalSteps ApprovalStep[]
 
   @@map("users")
 }
@@ -109,6 +110,7 @@ model Quotation {
   expiresAt     DateTime?
   lines         QuotationLine[]
   invoices      Invoice[]
+  approvalRequests ApprovalRequest[]
 
   @@index([status])
   @@index([customerId])
@@ -129,6 +131,39 @@ model QuotationLine {
 
   @@index([quotationId])
   @@map("quotation_lines")
+}
+
+// ---- Approvals ----
+model ApprovalRequest {
+  id          String                @id @default(cuid())
+  quotationId String
+  quotation   Quotation             @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  status      ApprovalRequestStatus  @default(PENDING)
+  reason      String?
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+  steps       ApprovalStep[]
+
+  @@index([quotationId])
+  @@index([status])
+  @@map("approval_requests")
+}
+
+model ApprovalStep {
+  id         String             @id @default(cuid())
+  requestId  String
+  request    ApprovalRequest    @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  level      Int
+  role       UserRole
+  status     ApprovalStepStatus @default(PENDING)
+  approverId String?
+  approver   User?              @relation(fields: [approverId], references: [id])
+  comment    String?
+  decidedAt  DateTime?
+  createdAt  DateTime           @default(now())
+
+  @@index([requestId])
+  @@map("approval_steps")
 }
 
 // ---- Invoices ----
