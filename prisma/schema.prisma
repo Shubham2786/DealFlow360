@@ -1,0 +1,124 @@
+// DealFlow360 Prisma schema.
+// Models are added incrementally per module (see tasks.md). This file currently
+// contains the datasource, generator, and shared domain enums. Auth/domain models
+// are introduced in their respective module commits.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---- Shared domain enums (mirror packages/shared/src/enums.ts) ----
+
+enum UserRole {
+  SALESPERSON
+  SALES_MANAGER
+  FINANCE
+  OPERATIONS
+  ADMIN
+}
+
+enum QuotationStatus {
+  DRAFT
+  SUBMITTED
+  PENDING_APPROVAL
+  CHANGES_REQUESTED
+  APPROVED
+  REJECTED
+  NEGOTIATION
+  CONVERTED_TO_FULFILLMENT
+  FULFILLING
+  PARTIALLY_FULFILLED
+  FULFILLED
+  BILLING
+  INVOICED
+  PAID
+  COMPLETED
+  CANCELLED
+}
+
+enum ApprovalRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CHANGES_REQUESTED
+  ESCALATED
+}
+
+enum ApprovalStepStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CHANGES_REQUESTED
+  SKIPPED
+}
+
+enum FulfillmentStatus {
+  PENDING
+  ALLOCATING
+  ALLOCATED
+  PARTIALLY_ALLOCATED
+  BACKORDERED
+  READY_TO_SHIP
+  FULFILLED
+  FAILED
+}
+
+enum ReservationStatus {
+  ACTIVE
+  RELEASED
+  FULFILLED
+  CANCELLED
+}
+
+enum BackorderStatus {
+  OPEN
+  PARTIALLY_ALLOCATED
+  FULFILLED
+  CANCELLED
+}
+
+enum AllocationSource {
+  INITIAL
+  BACKORDER
+}
+
+enum SubscriptionStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  CANCELLED
+  EXPIRED
+  PAST_DUE
+}
+
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum ProductType {
+  ONE_TIME
+  RECURRING
+}
+
+enum BillingFrequency {
+  MONTHLY
+  QUARTERLY
+  ANNUAL
+}
+
+enum CustomerSegment {
+  STANDARD
+  SMB
+  ENTERPRISE
+  STRATEGIC
+}

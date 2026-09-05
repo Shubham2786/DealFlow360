@@ -1,0 +1,22 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: dealflow360-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-dealflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dealflow}
+      POSTGRES_DB: ${POSTGRES_DB:-dealflow360}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - dealflow_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dealflow} -d ${POSTGRES_DB:-dealflow360}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  dealflow_pgdata:
+    name: dealflow360_pgdata
