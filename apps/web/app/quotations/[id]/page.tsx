@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { AppShell } from '@/components/app-shell';
 import { DealStatusBadge, EmptyState, LifecycleStepper, SectionCard } from '@/components/ui';
 import { api } from '@/lib/api';
@@ -14,6 +14,7 @@ const currency = (n: string | number) =>
 export default function QuotationDetailPage() {
   const auth = useRequireAuth();
   const params = useParams();
+  const router = useRouter();
   const id = String(params.id);
   const qc = useQueryClient();
 
@@ -30,6 +31,13 @@ export default function QuotationDetailPage() {
   const submit = useMutation({ mutationFn: () => api.quotations.submit(id), onSuccess: invalidate });
   const cancel = useMutation({ mutationFn: () => api.quotations.cancel(id), onSuccess: invalidate });
   const revise = useMutation({ mutationFn: () => api.quotations.revise(id), onSuccess: invalidate });
+  const convert = useMutation({
+    mutationFn: () => api.fulfillment.fromQuotation(id),
+    onSuccess: async (f: { id: string }) => {
+      await invalidate();
+      router.push(`/fulfillment/${f.id}`);
+    },
+  });
 
   if (auth.isLoading || auth.data === null) {
     return (
@@ -42,7 +50,8 @@ export default function QuotationDetailPage() {
   const canSubmit = status === 'DRAFT';
   const canRevise = ['CHANGES_REQUESTED', 'REJECTED', 'NEGOTIATION'].includes(status);
   const canCancel = !['CANCELLED', 'COMPLETED', 'PAID'].includes(status);
-  const pending = submit.isPending || cancel.isPending || revise.isPending;
+  const canConvert = status === 'APPROVED';
+  const pending = submit.isPending || cancel.isPending || revise.isPending || convert.isPending;
 
   return (
     <AppShell>
@@ -76,6 +85,15 @@ export default function QuotationDetailPage() {
                     className="rounded-md bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"
                   >
                     Submit for Approval
+                  </button>
+                )}
+                {canConvert && (
+                  <button
+                    onClick={() => convert.mutate()}
+                    disabled={pending}
+                    className="rounded-md bg-green-600 px-3 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-60"
+                  >
+                    Convert to Fulfillment
                   </button>
                 )}
                 {canRevise && (

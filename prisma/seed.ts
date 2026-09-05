@@ -56,6 +56,42 @@ async function main() {
     products[p.sku] = { id: created.id, basePrice: p.basePrice };
   }
 
+  // ---- Warehouses (upsert by code) ----
+  const warehouseSpecs = [
+    { code: 'WH-A', name: 'Central DC', priority: 10 },
+    { code: 'WH-B', name: 'East DC', priority: 20 },
+    { code: 'WH-C', name: 'West DC', priority: 30 },
+  ];
+  const warehouses: Record<string, string> = {};
+  for (const w of warehouseSpecs) {
+    const created = await prisma.warehouse.upsert({
+      where: { code: w.code },
+      update: {},
+      create: { code: w.code, name: w.name, priority: w.priority },
+    });
+    warehouses[w.code] = created.id;
+  }
+
+  // ---- Inventory (per product/warehouse; abundant / low / zero mix) ----
+  const invSpecs: { sku: string; code: string; onHand: number }[] = [
+    { sku: 'SKU-100', code: 'WH-A', onHand: 5 },   // laptop: low at A
+    { sku: 'SKU-100', code: 'WH-B', onHand: 3 },   // low at B -> backorders likely
+    { sku: 'SKU-200', code: 'WH-A', onHand: 200 }, // keyboard: abundant
+    { sku: 'SKU-300', code: 'WH-A', onHand: 500 }, // mouse: abundant
+    { sku: 'SKU-400', code: 'WH-B', onHand: 40 },  // monitor
+    { sku: 'SKU-400', code: 'WH-C', onHand: 10 },
+    // SKU-500 (service) intentionally has no inventory
+  ];
+  for (const s of invSpecs) {
+    const productId = products[s.sku]?.id;
+    if (!productId) continue;
+    await prisma.inventory.upsert({
+      where: { productId_warehouseId: { productId, warehouseId: warehouses[s.code] } },
+      update: {},
+      create: { productId, warehouseId: warehouses[s.code], onHand: s.onHand, reserved: 0 },
+    });
+  }
+
   // Seed domain rows only when empty (keeps re-runs idempotent).
   const existingQuotes = await prisma.quotation.count();
   if (existingQuotes > 0) {

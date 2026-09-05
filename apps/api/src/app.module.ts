@@ -8,6 +8,7 @@ import { CustomersModule } from './customers/customers.module';
 import { ProductsModule } from './products/products.module';
 import { QuotationsModule } from './quotations/quotations.module';
 import { ApprovalsModule } from './approvals/approvals.module';
+import { FulfillmentModule } from './fulfillment/fulfillment.module';
 import { InvoicesModule } from './invoices/invoices.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 
@@ -21,6 +22,7 @@ import { AnalyticsModule } from './analytics/analytics.module';
     ProductsModule,
     QuotationsModule,
     ApprovalsModule,
+    FulfillmentModule,
     InvoicesModule,
     AnalyticsModule,
   ],

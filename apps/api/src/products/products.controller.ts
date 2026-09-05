@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import {
   IsBoolean,
   IsEnum,
@@ -27,13 +27,22 @@ class CreateProductDto {
   @IsOptional() @IsBoolean() active?: boolean;
 }
 
+class UpdateProductDto {
+  @IsOptional() @IsString() @MinLength(1) name?: string;
+  @IsOptional() @IsString() description?: string;
+  @IsOptional() @IsString() category?: string;
+  @IsOptional() @IsNumber() @Min(0) basePrice?: number;
+  @IsOptional() @IsNumber() @Min(0) taxRate?: number;
+  @IsOptional() @IsBoolean() active?: boolean;
+}
+
 @Controller('products')
 @UseGuards(JwtAuthGuard)
 export class ProductsController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
-  ) {}
+  ) { }
 
   @Get()
   list() {
@@ -68,6 +77,24 @@ export class ProductsController {
       entityId: product.id,
       action: 'PRODUCT_CREATED',
       message: `Product ${product.sku} created`,
+    });
+    return product;
+  }
+
+  @Patch(':id')
+  async update(
+    @Param('id') id: string,
+    @Body() dto: UpdateProductDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    const product = await this.prisma.product.update({ where: { id }, data: dto });
+    await this.audit.record({
+      actorId: user.id,
+      actorName: user.name,
+      entityType: 'Product',
+      entityId: product.id,
+      action: 'PRODUCT_UPDATED',
+      message: `Product ${product.sku} updated`,
     });
     return product;
   }

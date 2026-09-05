@@ -120,6 +120,31 @@ export const api = {
     revise: (id: string) => apiFetch(`/quotations/${id}/revise`, { method: 'POST' }),
   },
 
+  products: {
+    list: () => apiFetch<ProductItem[]>('/products'),
+    get: (id: string) => apiFetch<ProductItem>(`/products/${id}`),
+    create: (input: Record<string, unknown>) =>
+      apiFetch<ProductItem>('/products', { method: 'POST', body: JSON.stringify(input) }),
+    update: (id: string, input: Record<string, unknown>) =>
+      apiFetch<ProductItem>(`/products/${id}`, { method: 'PATCH', body: JSON.stringify(input) }),
+  },
+
+  fulfillment: {
+    list: () => apiFetch<FulfillmentItem[]>('/fulfillment'),
+    get: (id: string) => apiFetch<FulfillmentItem>(`/fulfillment/${id}`),
+    fromQuotation: (quotationId: string) =>
+      apiFetch<FulfillmentItem>(`/fulfillment/from-quotation/${quotationId}`, { method: 'POST' }),
+    allocate: (id: string) => apiFetch<FulfillmentItem>(`/fulfillment/${id}/allocate`, { method: 'POST' }),
+    fulfill: (id: string) => apiFetch<FulfillmentItem>(`/fulfillment/${id}/fulfill`, { method: 'POST' }),
+  },
+
+  inventory: {
+    list: () => apiFetch<InventoryItem[]>('/inventory'),
+    warehouses: () => apiFetch<{ id: string; code: string; name: string; priority: number }[]>('/warehouses'),
+    receive: (input: { warehouseId: string; productId: string; quantity: number; reference: string }) =>
+      apiFetch('/inventory/receive', { method: 'POST', body: JSON.stringify(input) }),
+  },
+
   approvals: {
     list: (status?: string) =>
       apiFetch<ApprovalRequestItem[]>(`/approvals${status ? `?status=${status}` : ''}`),
@@ -132,6 +157,51 @@ export const api = {
       apiFetch(`/approvals/${id}/request-changes`, { method: 'POST', body: JSON.stringify({ comment }) }),
   },
 };
+
+export interface ProductItem {
+  id: string;
+  sku: string;
+  name: string;
+  description: string | null;
+  category: string | null;
+  type: string;
+  basePrice: string;
+  currency: string;
+  uom: string;
+  taxRate: string;
+  active: boolean;
+}
+
+export interface FulfillmentLineItem {
+  id: string;
+  productId: string;
+  orderedQty: number;
+  allocatedQty: number;
+  fulfilledQty: number;
+  backorderedQty: number;
+  status: string;
+  product?: { id: string; sku: string; name: string };
+  allocations?: { id: string; quantity: number; source: string; warehouse: { code: string } }[];
+  backorders?: { id: string; remainingQty: number; status: string }[];
+}
+
+export interface FulfillmentItem {
+  id: string;
+  number: string;
+  status: string;
+  createdAt: string;
+  customer?: { id: string; name: string } | null;
+  quotation?: { id: string; number: string; status?: string } | null;
+  lines: FulfillmentLineItem[];
+}
+
+export interface InventoryItem {
+  id: string;
+  onHand: number;
+  reserved: number;
+  product: { id: string; sku: string; name: string };
+  warehouse: { id: string; code: string; name: string };
+}
 
 export interface ApprovalStepItem {
   id: string;
