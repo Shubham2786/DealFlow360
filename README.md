@@ -29,17 +29,49 @@ docker-compose.yml  # local PostgreSQL
 
 ## Local Development
 
-Prerequisites: Node 20+, pnpm 11+, Docker.
+Prerequisites: Node 20+, pnpm 11+, and PostgreSQL (local install **or** Docker).
+
+### Option A — Local PostgreSQL (no Docker)
 
 ```bash
 cp .env.example .env
+# Edit DATABASE_URL in .env to match your local Postgres user/password/port (default 5432)
+
+# 1) create the database (once) — any of:
+createdb dealflow360
+#   or in psql:  CREATE DATABASE dealflow360;
+#   or in pgAdmin: right-click Databases → Create → Database "dealflow360"
+
 pnpm install
-pnpm db:up             # start PostgreSQL in Docker
-pnpm prisma:migrate    # apply migrations
-pnpm prisma:seed       # seed demo data
-pnpm dev:api           # start NestJS API (http://localhost:3001/api)
-pnpm dev:web           # start Next.js web (http://localhost:3000)
+pnpm prisma migrate deploy   # apply all migrations to your local DB
+pnpm prisma db seed          # roles, permissions, admin + demo data
+pnpm dev:api                 # http://localhost:3001/api
+pnpm dev:web                 # http://localhost:3000
 ```
+
+### Option B — PostgreSQL via Docker
+
+```bash
+cp .env.example .env
+# set DATABASE_URL to the port 5433 line in .env.example
+pnpm install
+pnpm db:up
+pnpm prisma:migrate
+pnpm prisma:seed
+pnpm dev:api
+pnpm dev:web
+```
+
+### Seeded logins (password: `password123`)
+
+| Email | Role |
+|-------|------|
+| admin@dealflow.test | ADMIN (user & role management) |
+| morgan@dealflow.test | MANAGER (approve deals, allocate fulfillment) |
+| fiona@dealflow.test | FINANCE (billing, invoices, payments) |
+| sam@dealflow.test / uma@dealflow.test | USER (create/view own deals) |
+
+Public signup always creates a **USER**; only an ADMIN can change roles (Users page).
 
 ## Demo (two dashboards)
 

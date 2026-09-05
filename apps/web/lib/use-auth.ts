@@ -21,6 +21,18 @@ export function useCurrentUser() {
   });
 }
 
+/**
+ * Returns a permission checker for the current user (UX gating only — the backend is the
+ * real authority). ADMIN implicitly passes every check.
+ */
+export function usePermissions() {
+  const { data } = useCurrentUser();
+  const role = data?.role;
+  const perms = new Set(data?.permissions ?? []);
+  const can = (permission: string) => role === 'ADMIN' || perms.has(permission);
+  return { role, can, permissions: perms };
+}
+
 /** Client-side guard: redirects to login when unauthenticated. */
 export function useRequireAuth() {
   const router = useRouter();

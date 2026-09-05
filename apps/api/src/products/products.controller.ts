@@ -8,10 +8,12 @@ import {
   Min,
   MinLength,
 } from 'class-validator';
-import { ProductType } from '@dealflow/shared';
+import { Permission, ProductType } from '@dealflow/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
+import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 import { CurrentUser, type AuthUser } from '../auth/decorators/current-user.decorator';
 
 class CreateProductDto {
@@ -55,6 +57,8 @@ export class ProductsController {
   }
 
   @Post()
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions(Permission.SYSTEM_CONFIG_MANAGE)
   async create(@Body() dto: CreateProductDto, @CurrentUser() user: AuthUser) {
     const product = await this.prisma.product.create({
       data: {
@@ -82,6 +86,8 @@ export class ProductsController {
   }
 
   @Patch(':id')
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions(Permission.SYSTEM_CONFIG_MANAGE)
   async update(
     @Param('id') id: string,
     @Body() dto: UpdateProductDto,

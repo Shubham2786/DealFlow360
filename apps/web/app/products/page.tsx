@@ -6,7 +6,7 @@ import { AppShell } from '@/components/app-shell';
 import { Badge, EmptyState, SectionCard } from '@/components/ui';
 import { api } from '@/lib/api';
 import { inr } from '@/lib/format';
-import { useRequireAuth } from '@/lib/use-auth';
+import { usePermissions, useRequireAuth } from '@/lib/use-auth';
 
 const currency = (n: string | number) => inr(n, true);
 
@@ -17,7 +17,8 @@ export default function ProductsPage() {
   const qc = useQueryClient();
   const products = useQuery({ queryKey: ['products'], queryFn: api.products.list });
   const [form, setForm] = useState({ ...empty });
-  const isAdmin = auth.data?.role === 'ADMIN';
+  const { can } = usePermissions();
+  const isAdmin = can('SYSTEM_CONFIG_MANAGE');
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['products'] });
   const create = useMutation({

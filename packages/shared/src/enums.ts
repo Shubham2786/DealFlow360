@@ -1,13 +1,52 @@
 // Shared domain enums for DealFlow360.
 // Mirror of Prisma enums so web and api share a single source of truth.
 
+// Role names (data-backed via the Role table). Kept as an enum for convenient,
+// type-safe references in code. Add new roles here + seed them; no code rewrite needed.
 export enum UserRole {
-  SALESPERSON = 'SALESPERSON',
-  SALES_MANAGER = 'SALES_MANAGER',
+  USER = 'USER',
+  MANAGER = 'MANAGER',
   FINANCE = 'FINANCE',
-  OPERATIONS = 'OPERATIONS',
   ADMIN = 'ADMIN',
 }
+
+// Permission names (data-backed via the Permission table).
+export enum Permission {
+  DEAL_VIEW_OWN = 'DEAL_VIEW_OWN',
+  DEAL_VIEW_TEAM = 'DEAL_VIEW_TEAM',
+  DEAL_CREATE = 'DEAL_CREATE',
+  DEAL_APPROVE = 'DEAL_APPROVE',
+  TASK_VIEW_OWN = 'TASK_VIEW_OWN',
+  TASK_ALLOCATE = 'TASK_ALLOCATE',
+  TEAM_VIEW = 'TEAM_VIEW',
+  FINANCE_DATA_VIEW = 'FINANCE_DATA_VIEW',
+  FINANCE_TRANSACTION_APPROVE = 'FINANCE_TRANSACTION_APPROVE',
+  FINANCE_REPORT_GENERATE = 'FINANCE_REPORT_GENERATE',
+  USER_MANAGE = 'USER_MANAGE',
+  ROLE_ASSIGN = 'ROLE_ASSIGN',
+  SYSTEM_CONFIG_MANAGE = 'SYSTEM_CONFIG_MANAGE',
+}
+
+// Canonical role → permission matrix. Seed reads this; ADMIN gets everything.
+export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
+  [UserRole.USER]: [Permission.DEAL_VIEW_OWN, Permission.DEAL_CREATE, Permission.TASK_VIEW_OWN],
+  [UserRole.MANAGER]: [
+    Permission.DEAL_VIEW_OWN,
+    Permission.DEAL_VIEW_TEAM,
+    Permission.DEAL_CREATE,
+    Permission.DEAL_APPROVE,
+    Permission.TASK_VIEW_OWN,
+    Permission.TASK_ALLOCATE,
+    Permission.TEAM_VIEW,
+  ],
+  [UserRole.FINANCE]: [
+    Permission.FINANCE_DATA_VIEW,
+    Permission.FINANCE_TRANSACTION_APPROVE,
+    Permission.FINANCE_REPORT_GENERATE,
+    Permission.DEAL_APPROVE, // approves the finance step of a deal's approval chain
+  ],
+  [UserRole.ADMIN]: Object.values(Permission),
+};
 
 export enum QuotationStatus {
   DRAFT = 'DRAFT',

@@ -11,7 +11,10 @@ import {
 import { Type } from 'class-transformer';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { Permission } from '@dealflow/shared';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
+import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 import { CurrentUser, type AuthUser } from '../auth/decorators/current-user.decorator';
 import { QuotationsService } from './quotations.service';
 import { ApprovalsService } from '../approvals/approvals.service';
@@ -53,6 +56,8 @@ export class QuotationsController {
   }
 
   @Post()
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions(Permission.DEAL_CREATE)
   async create(@Body() dto: CreateQuotationDto, @CurrentUser() user: AuthUser) {
     const quotation = await this.quotations.create({
       ...dto,

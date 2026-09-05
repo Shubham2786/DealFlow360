@@ -1,6 +1,7 @@
 import {
   ConflictException,
   Injectable,
+  InternalServerErrorException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -14,6 +15,15 @@ export interface TokenPair {
   accessToken: string;
   refreshToken: string;
 }
+
+// Full user with role+permissions loaded.
+type UserForToken = {
+  id: string;
+  email: string;
+  name: string;
+  tokenVersion: number;
+  role: { name: string };
+};
 
 @Injectable()
 export class AuthService {
@@ -29,13 +39,15 @@ export class AuthService {
     return createHash('sha256').update(value).digest('hex');
   }
 
-  private async issueTokens(user: {
-    id: string;
-    email: string;
-    role: string;
-    name: string;
-  }): Promise<TokenPair> {
-    const payload = { sub: user.id, email: user.email, role: user.role, name: user.name };
+  private async issueTokens(user: UserForToken): Promise<TokenPair> {
+    // Access token carries only non-sensitive identity + tokenVersion for invalidation.
+    const payload = {
+      sub: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role.name,
+      tokenVersion: user.tokenVersion,
+    };
     const accessToken = this.jwt.sign(payload, {
       secret: process.env.JWT_ACCESS_SECRET,
       expiresIn: this.accessTtl,
@@ -57,9 +69,18 @@ export class AuthService {
     return { accessToken, refreshToken };
   }
 
+  /**
+   * Public signup. The role is ALWAYS USER and is assigned server-side — any `role`
+   * field sent by the client is ignored (and rejected by the DTO whitelist).
+   */
   async signup(dto: SignupDto): Promise<TokenPair> {
     const existing = await this.prisma.user.findUnique({ where: { email: dto.email } });
     if (existing) throw new ConflictException('Email already registered');
+
+    const userRole = await this.prisma.role.findUnique({ where: { name: UserRole.USER } });
+    if (!userRole) {
+      throw new InternalServerErrorException('USER role is not seeded; run the seed');
+    }
 
     const passwordHash = await argon2.hash(dto.password);
     const user = await this.prisma.user.create({
@@ -67,15 +88,19 @@ export class AuthService {
         email: dto.email,
         name: dto.name,
         passwordHash,
-        role: dto.role ?? UserRole.SALESPERSON,
+        roleId: userRole.id, // privilege granted by the backend, never requested
       },
+      include: { role: true },
     });
     return this.issueTokens(user);
   }
 
   async login(dto: LoginDto): Promise<TokenPair> {
-    const user = await this.prisma.user.findUnique({ where: { email: dto.email } });
-    if (!user || !user.active) throw new UnauthorizedException('Invalid credentials');
+    const user = await this.prisma.user.findUnique({
+      where: { email: dto.email },
+      include: { role: true },
+    });
+    if (!user || user.status !== 'ACTIVE') throw new UnauthorizedException('Invalid credentials');
 
     const valid = await argon2.verify(user.passwordHash, dto.password);
     if (!valid) throw new UnauthorizedException('Invalid credentials');
@@ -99,14 +124,13 @@ export class AuthService {
       throw new UnauthorizedException('Refresh token no longer valid');
     }
 
-    // Rotate: revoke the used token before issuing a new pair.
-    await this.prisma.refreshToken.update({
-      where: { id: stored.id },
-      data: { revoked: true },
-    });
+    await this.prisma.refreshToken.update({ where: { id: stored.id }, data: { revoked: true } });
 
-    const user = await this.prisma.user.findUnique({ where: { id: payload.sub } });
-    if (!user || !user.active) throw new UnauthorizedException('User inactive');
+    const user = await this.prisma.user.findUnique({
+      where: { id: payload.sub },
+      include: { role: true },
+    });
+    if (!user || user.status !== 'ACTIVE') throw new UnauthorizedException('User inactive');
 
     return this.issueTokens(user);
   }
@@ -120,12 +144,21 @@ export class AuthService {
     });
   }
 
+  /** Current user with role + resolved permissions (safe projection — no password/hash). */
   async me(userId: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, email: true, name: true, role: true, active: true, createdAt: true },
+      include: { role: { include: { permissions: { include: { permission: true } } } } },
     });
     if (!user) throw new UnauthorizedException('User not found');
-    return user;
+    return {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role.name,
+      permissions: user.role.permissions.map((rp) => rp.permission.name),
+      status: user.status,
+      createdAt: user.createdAt,
+    };
   }
 }

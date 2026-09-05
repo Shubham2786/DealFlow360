@@ -5,18 +5,20 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { api } from '@/lib/api';
-import { useCurrentUser } from '@/lib/use-auth';
+import { useCurrentUser, usePermissions } from '@/lib/use-auth';
 
-const NAV = [
+// perm === undefined means visible to any authenticated user.
+const NAV: { href: string; label: string; perm?: string }[] = [
   { href: '/dashboard', label: 'Dashboard' },
   { href: '/quotations', label: 'Quotations' },
-  { href: '/approvals', label: 'Approvals' },
-  { href: '/fulfillment', label: 'Fulfillment' },
-  { href: '/inventory', label: 'Inventory' },
-  { href: '/invoices', label: 'Invoices' },
+  { href: '/approvals', label: 'Approvals', perm: 'DEAL_APPROVE' },
+  { href: '/fulfillment', label: 'Fulfillment', perm: 'TASK_ALLOCATE' },
+  { href: '/inventory', label: 'Inventory', perm: 'TASK_ALLOCATE' },
+  { href: '/invoices', label: 'Invoices', perm: 'FINANCE_DATA_VIEW' },
   { href: '/deal-health', label: 'Deal Health' },
   { href: '/customers', label: 'Customers' },
   { href: '/products', label: 'Products' },
+  { href: '/admin/users', label: 'Users', perm: 'USER_MANAGE' },
 ];
 
 function initials(name?: string): string {
@@ -29,6 +31,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const qc = useQueryClient();
   const me = useCurrentUser();
+  const { can } = usePermissions();
+  const nav = NAV.filter((item) => !item.perm || can(item.perm));
 
   const logout = useMutation({
     mutationFn: () => api.auth.logout(),
@@ -43,7 +47,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <aside className="flex w-60 shrink-0 flex-col border-r border-slate-200 bg-white">
         <div className="px-5 py-4 text-lg font-bold text-brand-700">DealFlow360</div>
         <nav className="flex flex-1 flex-col gap-1 px-3">
-          {NAV.map((item) => {
+          {nav.map((item) => {
             const active = pathname === item.href || pathname.startsWith(item.href + '/');
             return (
               <Link

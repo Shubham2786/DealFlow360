@@ -29,10 +29,7 @@ export default function ApprovalDetailPage() {
 
   const req = useQuery({ queryKey: ['approval', id], queryFn: () => api.approvals.get(id), enabled: !!id });
 
-  const invalidate = async () => {
-    await qc.invalidateQueries({ queryKey: ['approval', id] });
-    await qc.invalidateQueries({ queryKey: ['approvals'] });
-  };
+  const invalidate = async () => { await qc.invalidateQueries(); };
   const approve = useMutation({ mutationFn: () => api.approvals.approve(id, comment), onSuccess: invalidate });
   const reject = useMutation({ mutationFn: () => api.approvals.reject(id, comment), onSuccess: invalidate });
   const requestChanges = useMutation({ mutationFn: () => api.approvals.requestChanges(id, comment), onSuccess: invalidate });

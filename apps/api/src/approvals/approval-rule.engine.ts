@@ -31,7 +31,7 @@ export class ApprovalRuleEngine {
       return { chain: [], reasons: ['Within salesperson authority — auto-approved'] };
     }
 
-    const chain: UserRole[] = [UserRole.SALES_MANAGER];
+    const chain: UserRole[] = [UserRole.MANAGER];
     reasons.push(`Discount ${facts.discountPct}% / margin ${facts.marginPct}% requires manager review`);
 
     if (

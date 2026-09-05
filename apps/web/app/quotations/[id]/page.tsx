@@ -7,7 +7,7 @@ import { AppShell } from '@/components/app-shell';
 import { DealStatusBadge, EmptyState, LifecycleStepper, SectionCard } from '@/components/ui';
 import { api } from '@/lib/api';
 import { inr } from '@/lib/format';
-import { useRequireAuth } from '@/lib/use-auth';
+import { usePermissions, useRequireAuth } from '@/lib/use-auth';
 
 const currency = (n: string | number) => inr(n, true);
 
@@ -24,10 +24,9 @@ export default function QuotationDetailPage() {
     enabled: !!id,
   });
 
-  const invalidate = async () => {
-    await qc.invalidateQueries({ queryKey: ['quotation', id] });
-    await qc.invalidateQueries({ queryKey: ['quotations'] });
-  };
+  const { can } = usePermissions();
+  // Broad invalidation so dashboards, approvals, fulfillment, invoices reflect changes.
+  const invalidate = async () => { await qc.invalidateQueries(); };
   const submit = useMutation({ mutationFn: () => api.quotations.submit(id), onSuccess: invalidate });
   const cancel = useMutation({ mutationFn: () => api.quotations.cancel(id), onSuccess: invalidate });
   const revise = useMutation({ mutationFn: () => api.quotations.revise(id), onSuccess: invalidate });
@@ -57,8 +56,8 @@ export default function QuotationDetailPage() {
   const canSubmit = status === 'DRAFT';
   const canRevise = ['CHANGES_REQUESTED', 'REJECTED', 'NEGOTIATION'].includes(status);
   const canCancel = !['CANCELLED', 'COMPLETED', 'PAID'].includes(status);
-  const canConvert = status === 'APPROVED';
-  const canInvoice = ['FULFILLED', 'PARTIALLY_FULFILLED'].includes(status);
+  const canConvert = status === 'APPROVED' && can('TASK_ALLOCATE');
+  const canInvoice = ['FULFILLED', 'PARTIALLY_FULFILLED'].includes(status) && can('FINANCE_TRANSACTION_APPROVE');
   const pending =
     submit.isPending || cancel.isPending || revise.isPending || convert.isPending || generateInvoice.isPending;
 

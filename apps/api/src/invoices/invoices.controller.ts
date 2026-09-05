@@ -1,9 +1,9 @@
 import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { IsNumber, IsOptional, IsString, Min } from 'class-validator';
-import { UserRole } from '@dealflow/shared';
+import { Permission } from '@dealflow/shared';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../auth/decorators/roles.decorator';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
+import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 import { CurrentUser, type AuthUser } from '../auth/decorators/current-user.decorator';
 import { BillingService } from './billing.service';
 
@@ -29,22 +29,22 @@ export class InvoicesController {
   }
 
   @Post('from-quotation/:quotationId')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.FINANCE, UserRole.ADMIN, UserRole.SALES_MANAGER)
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions(Permission.FINANCE_TRANSACTION_APPROVE)
   generate(@Param('quotationId') quotationId: string, @CurrentUser() user: AuthUser) {
     return this.billing.generateFromQuotation(quotationId, user);
   }
 
   @Post(':id/payments')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.FINANCE, UserRole.ADMIN)
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions(Permission.FINANCE_TRANSACTION_APPROVE)
   pay(@Param('id') id: string, @Body() dto: PaymentDto, @CurrentUser() user: AuthUser) {
     return this.billing.recordPayment(id, dto, user);
   }
 
   @Post(':id/cancel')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.FINANCE, UserRole.ADMIN)
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions(Permission.FINANCE_TRANSACTION_APPROVE)
   cancel(@Param('id') id: string, @CurrentUser() user: AuthUser) {
     return this.billing.cancel(id, user);
   }

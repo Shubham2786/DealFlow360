@@ -50,7 +50,8 @@ export interface CurrentUser {
   email: string;
   name: string;
   role: string;
-  active: boolean;
+  permissions: string[];
+  status: string;
   createdAt: string;
 }
 
@@ -157,6 +158,13 @@ export const api = {
       apiFetch<CustomerItem>('/customers', { method: 'POST', body: JSON.stringify(input) }),
   },
 
+  admin: {
+    users: () => apiFetch<AdminUserItem[]>('/users'),
+    roles: () => apiFetch<{ id: string; name: string; description: string | null }[]>('/roles'),
+    assignRole: (userId: string, role: string) =>
+      apiFetch<AdminUserItem>(`/users/${userId}/role`, { method: 'PATCH', body: JSON.stringify({ role }) }),
+  },
+
   inventory: {
     list: () => apiFetch<InventoryItem[]>('/inventory'),
     warehouses: () => apiFetch<{ id: string; code: string; name: string; priority: number }[]>('/warehouses'),
@@ -202,6 +210,15 @@ export interface CustomerItem {
   contactEmail: string | null;
   contactPhone: string | null;
   active: boolean;
+}
+
+export interface AdminUserItem {
+  id: string;
+  email: string;
+  name: string;
+  role: string;
+  status: string;
+  createdAt: string;
 }
 
 export interface ProductItem {

@@ -1,9 +1,9 @@
 import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { IsInt, IsString, Min } from 'class-validator';
-import { UserRole } from '@dealflow/shared';
+import { Permission } from '@dealflow/shared';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../auth/decorators/roles.decorator';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
+import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 import { CurrentUser, type AuthUser } from '../auth/decorators/current-user.decorator';
 import { FulfillmentService } from './fulfillment.service';
 
@@ -17,7 +17,7 @@ class ReceiveDto {
 @Controller()
 @UseGuards(JwtAuthGuard)
 export class FulfillmentController {
-  constructor(private readonly fulfillment: FulfillmentService) {}
+  constructor(private readonly fulfillment: FulfillmentService) { }
 
   @Get('fulfillment')
   list() {
@@ -30,22 +30,22 @@ export class FulfillmentController {
   }
 
   @Post('fulfillment/from-quotation/:quotationId')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.OPERATIONS, UserRole.ADMIN, UserRole.SALES_MANAGER)
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions(Permission.TASK_ALLOCATE)
   create(@Param('quotationId') quotationId: string, @CurrentUser() user: AuthUser) {
     return this.fulfillment.createFromQuotation(quotationId, user);
   }
 
   @Post('fulfillment/:id/allocate')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.OPERATIONS, UserRole.ADMIN)
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions(Permission.TASK_ALLOCATE)
   allocate(@Param('id') id: string, @CurrentUser() user: AuthUser) {
     return this.fulfillment.allocate(id, user);
   }
 
   @Post('fulfillment/:id/fulfill')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.OPERATIONS, UserRole.ADMIN)
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions(Permission.TASK_ALLOCATE)
   fulfill(@Param('id') id: string, @CurrentUser() user: AuthUser) {
     return this.fulfillment.fulfill(id, user);
   }
@@ -61,8 +61,8 @@ export class FulfillmentController {
   }
 
   @Post('inventory/receive')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.OPERATIONS, UserRole.ADMIN)
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions(Permission.TASK_ALLOCATE)
   receive(@Body() dto: ReceiveDto, @CurrentUser() user: AuthUser) {
     return this.fulfillment.receive(dto, user);
   }

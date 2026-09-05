@@ -1,5 +1,4 @@
-import { IsBoolean, IsEmail, IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
-import { UserRole } from '@dealflow/shared';
+import { IsBoolean, IsEmail, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class LoginDto {
   @IsEmail()
@@ -25,8 +24,7 @@ export class SignupDto {
   @IsString()
   @MinLength(1)
   name!: string;
-
-  @IsOptional()
-  @IsEnum(UserRole)
-  role?: UserRole;
+  // NOTE: no `role` field by design. Public signup always yields USER (assigned
+  // server-side). The global ValidationPipe (forbidNonWhitelisted) rejects any
+  // `role` a malicious client tries to send.
 }

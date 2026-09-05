@@ -6,7 +6,7 @@ import { useParams } from 'next/navigation';
 import { AppShell } from '@/components/app-shell';
 import { Badge, EmptyState, SectionCard } from '@/components/ui';
 import { api } from '@/lib/api';
-import { useRequireAuth } from '@/lib/use-auth';
+import { usePermissions, useRequireAuth } from '@/lib/use-auth';
 
 const FSTATUS: Record<string, string> = {
   PENDING: 'info',
@@ -25,10 +25,9 @@ export default function FulfillmentDetailPage() {
 
   const f = useQuery({ queryKey: ['fulfillment', id], queryFn: () => api.fulfillment.get(id), enabled: !!id });
 
-  const invalidate = async () => {
-    await qc.invalidateQueries({ queryKey: ['fulfillment', id] });
-    await qc.invalidateQueries({ queryKey: ['fulfillment'] });
-  };
+  const { can } = usePermissions();
+  // Broad invalidation so dashboards, deal-health, quotations etc. reflect the change.
+  const invalidate = async () => { await qc.invalidateQueries(); };
   const allocate = useMutation({ mutationFn: () => api.fulfillment.allocate(id), onSuccess: invalidate });
   const fulfill = useMutation({ mutationFn: () => api.fulfillment.fulfill(id), onSuccess: invalidate });
 
@@ -38,8 +37,9 @@ export default function FulfillmentDetailPage() {
 
   const order = f.data;
   const pending = allocate.isPending || fulfill.isPending;
-  const canAllocate = order && ['PENDING', 'PARTIALLY_ALLOCATED', 'BACKORDERED'].includes(order.status);
-  const canFulfill = order && order.lines.some((l) => l.allocatedQty > l.fulfilledQty);
+  const mayAllocate = can('TASK_ALLOCATE');
+  const canAllocate = mayAllocate && order && ['PENDING', 'PARTIALLY_ALLOCATED', 'BACKORDERED'].includes(order.status);
+  const canFulfill = mayAllocate && order && order.lines.some((l) => l.allocatedQty > l.fulfilledQty);
   const err = (allocate.error || fulfill.error) as Error | null;
 
   return (

@@ -8,7 +8,7 @@ import { AppShell } from '@/components/app-shell';
 import { Badge, EmptyState, SectionCard } from '@/components/ui';
 import { api } from '@/lib/api';
 import { inr, formatDate, formatDateTime } from '@/lib/format';
-import { useRequireAuth } from '@/lib/use-auth';
+import { usePermissions, useRequireAuth } from '@/lib/use-auth';
 
 const ISTATUS: Record<string, string> = {
   DRAFT: 'info', ISSUED: 'info', PARTIALLY_PAID: 'warning', PAID: 'success', OVERDUE: 'critical', CANCELLED: 'critical',
@@ -24,10 +24,7 @@ export default function InvoiceDetailPage() {
 
   const inv = useQuery({ queryKey: ['invoice', id], queryFn: () => api.invoices.get(id), enabled: !!id });
 
-  const invalidate = async () => {
-    await qc.invalidateQueries({ queryKey: ['invoice', id] });
-    await qc.invalidateQueries({ queryKey: ['invoices'] });
-  };
+  const invalidate = async () => { await qc.invalidateQueries(); };
   const pay = useMutation({
     mutationFn: () => api.invoices.pay(id, Number(amount), method),
     onSuccess: async () => { setAmount(''); await invalidate(); },
@@ -39,8 +36,8 @@ export default function InvoiceDetailPage() {
   }
 
   const i = inv.data;
-  const role = auth.data?.role;
-  const canManage = role === 'FINANCE' || role === 'ADMIN';
+  const { can } = usePermissions();
+  const canManage = can('FINANCE_TRANSACTION_APPROVE');
   const outstanding = i ? Number(i.total) - Number(i.paidAmount) : 0;
   const payable = i && i.status !== 'PAID' && i.status !== 'CANCELLED';
 
