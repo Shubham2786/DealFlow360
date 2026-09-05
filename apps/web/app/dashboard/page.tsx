@@ -3,9 +3,19 @@
 import { useQuery } from '@tanstack/react-query';
 import { AppShell } from '@/components/app-shell';
 import { api } from '@/lib/api';
+import { useRequireAuth } from '@/lib/use-auth';
 
 export default function DashboardPage() {
+  const auth = useRequireAuth();
   const health = useQuery({ queryKey: ['health'], queryFn: api.health });
+
+  if (auth.isLoading || auth.data === null) {
+    return (
+      <div className="flex min-h-screen items-center justify-center text-sm text-slate-400">
+        Loading…
+      </div>
+    );
+  }
 
   return (
     <AppShell>
@@ -13,7 +23,7 @@ export default function DashboardPage() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Sales Dashboard</h1>
           <p className="text-sm text-slate-500">
-            Operational overview. Modules are added incrementally.
+            Welcome back, {auth.data?.name} ({auth.data?.role}). Modules are added incrementally.
           </p>
         </div>
 

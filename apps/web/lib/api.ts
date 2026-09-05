@@ -45,6 +45,30 @@ export interface HealthResponse {
   timestamp: string;
 }
 
+export interface CurrentUser {
+  id: string;
+  email: string;
+  name: string;
+  role: string;
+  active: boolean;
+  createdAt: string;
+}
+
 export const api = {
   health: () => apiFetch<HealthResponse>('/health'),
+
+  auth: {
+    login: (email: string, password: string) =>
+      apiFetch<{ ok: boolean }>('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ email, password }),
+      }),
+    signup: (input: { email: string; password: string; name: string; role?: string }) =>
+      apiFetch<{ ok: boolean }>('/auth/signup', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+    logout: () => apiFetch<{ ok: boolean }>('/auth/logout', { method: 'POST' }),
+    me: () => apiFetch<CurrentUser>('/auth/me'),
+  },
 };
