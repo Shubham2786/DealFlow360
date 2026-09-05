@@ -138,6 +138,25 @@ export const api = {
     fulfill: (id: string) => apiFetch<FulfillmentItem>(`/fulfillment/${id}/fulfill`, { method: 'POST' }),
   },
 
+  invoices: {
+    list: () => apiFetch<InvoiceItem[]>('/invoices'),
+    get: (id: string) => apiFetch<InvoiceItem>(`/invoices/${id}`),
+    generateFromQuotation: (quotationId: string) =>
+      apiFetch<InvoiceItem>(`/invoices/from-quotation/${quotationId}`, { method: 'POST' }),
+    pay: (id: string, amount: number, method?: string, reference?: string) =>
+      apiFetch<InvoiceItem>(`/invoices/${id}/payments`, {
+        method: 'POST',
+        body: JSON.stringify({ amount, method, reference }),
+      }),
+    cancel: (id: string) => apiFetch<InvoiceItem>(`/invoices/${id}/cancel`, { method: 'POST' }),
+  },
+
+  customers: {
+    list: () => apiFetch<CustomerItem[]>('/customers'),
+    create: (input: Record<string, unknown>) =>
+      apiFetch<CustomerItem>('/customers', { method: 'POST', body: JSON.stringify(input) }),
+  },
+
   inventory: {
     list: () => apiFetch<InventoryItem[]>('/inventory'),
     warehouses: () => apiFetch<{ id: string; code: string; name: string; priority: number }[]>('/warehouses'),
@@ -157,6 +176,33 @@ export const api = {
       apiFetch(`/approvals/${id}/request-changes`, { method: 'POST', body: JSON.stringify({ comment }) }),
   },
 };
+
+export interface InvoiceItem {
+  id: string;
+  number: string;
+  status: string;
+  issueDate: string | null;
+  dueDate: string | null;
+  paymentTerms: string;
+  subtotal: string;
+  gstTotal: string;
+  total: string;
+  paidAmount: string;
+  customer?: { id: string; name: string } | null;
+  quotation?: { id: string; number: string } | null;
+  lines?: { id: string; description: string; qty: number; unitPrice: string; gstRate: string; lineTotal: string }[];
+  payments?: { id: string; amount: string; method: string; reference: string | null; receivedAt: string }[];
+}
+
+export interface CustomerItem {
+  id: string;
+  name: string;
+  segment: string;
+  contactName: string | null;
+  contactEmail: string | null;
+  contactPhone: string | null;
+  active: boolean;
+}
 
 export interface ProductItem {
   id: string;

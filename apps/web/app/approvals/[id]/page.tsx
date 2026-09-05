@@ -7,10 +7,10 @@ import { useState } from 'react';
 import { AppShell } from '@/components/app-shell';
 import { Badge, EmptyState, SectionCard } from '@/components/ui';
 import { api } from '@/lib/api';
+import { inr } from '@/lib/format';
 import { useRequireAuth } from '@/lib/use-auth';
 
-const currency = (n: string | number) =>
-  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(Number(n));
+const currency = (n: string | number) => inr(n);
 
 const STEP_KIND: Record<string, string> = {
   PENDING: 'info',

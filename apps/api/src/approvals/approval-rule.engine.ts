@@ -19,9 +19,9 @@ export class ApprovalRuleEngine {
   private readonly HEALTHY_MARGIN = 20;
   private readonly FINANCE_DISCOUNT = 10; // > this needs finance
   private readonly FINANCE_MARGIN = 15; // < this needs finance
-  private readonly FINANCE_VALUE = 20000;
+  private readonly FINANCE_VALUE = 200000; // ₹2 lakh
   private readonly EXEC_DISCOUNT = 20;
-  private readonly EXEC_VALUE = 50000;
+  private readonly EXEC_VALUE = 1000000; // ₹10 lakh
 
   /** Returns ordered approver roles. Empty array means the deal can auto-approve. */
   computeChain(facts: DealFacts): { chain: UserRole[]; reasons: string[] } {

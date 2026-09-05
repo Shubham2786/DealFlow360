@@ -5,12 +5,12 @@ import { useState } from 'react';
 import { AppShell } from '@/components/app-shell';
 import { Badge, EmptyState, SectionCard } from '@/components/ui';
 import { api } from '@/lib/api';
+import { inr } from '@/lib/format';
 import { useRequireAuth } from '@/lib/use-auth';
 
-const currency = (n: string | number) =>
-  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(n));
+const currency = (n: string | number) => inr(n, true);
 
-const empty = { sku: '', name: '', category: '', type: 'ONE_TIME', basePrice: 0, taxRate: 0 };
+const empty = { sku: '', name: '', category: '', type: 'ONE_TIME', basePrice: 0, taxRate: 18 };
 
 export default function ProductsPage() {
   const auth = useRequireAuth();
@@ -123,7 +123,7 @@ export default function ProductsPage() {
                     <input type="number" min={0} step="0.01" required value={form.basePrice} onChange={(e) => setForm({ ...form, basePrice: Number(e.target.value) })} className="w-full rounded-md border border-slate-300 px-2 py-1.5" />
                   </label>
                   <label className="block">
-                    <span className="mb-1 block font-medium text-slate-600">Tax Rate %</span>
+                    <span className="mb-1 block font-medium text-slate-600">GST %</span>
                     <input type="number" min={0} step="0.01" value={form.taxRate} onChange={(e) => setForm({ ...form, taxRate: Number(e.target.value) })} className="w-full rounded-md border border-slate-300 px-2 py-1.5" />
                   </label>
                   {create.isError && <p className="text-red-600">{(create.error as Error).message}</p>}

@@ -6,10 +6,10 @@ import { useParams, useRouter } from 'next/navigation';
 import { AppShell } from '@/components/app-shell';
 import { DealStatusBadge, EmptyState, LifecycleStepper, SectionCard } from '@/components/ui';
 import { api } from '@/lib/api';
+import { inr } from '@/lib/format';
 import { useRequireAuth } from '@/lib/use-auth';
 
-const currency = (n: string | number) =>
-  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(Number(n));
+const currency = (n: string | number) => inr(n, true);
 
 export default function QuotationDetailPage() {
   const auth = useRequireAuth();
@@ -38,6 +38,13 @@ export default function QuotationDetailPage() {
       router.push(`/fulfillment/${f.id}`);
     },
   });
+  const generateInvoice = useMutation({
+    mutationFn: () => api.invoices.generateFromQuotation(id),
+    onSuccess: async (inv: { id: string }) => {
+      await invalidate();
+      router.push(`/invoices/${inv.id}`);
+    },
+  });
 
   if (auth.isLoading || auth.data === null) {
     return (
@@ -51,7 +58,9 @@ export default function QuotationDetailPage() {
   const canRevise = ['CHANGES_REQUESTED', 'REJECTED', 'NEGOTIATION'].includes(status);
   const canCancel = !['CANCELLED', 'COMPLETED', 'PAID'].includes(status);
   const canConvert = status === 'APPROVED';
-  const pending = submit.isPending || cancel.isPending || revise.isPending || convert.isPending;
+  const canInvoice = ['FULFILLED', 'PARTIALLY_FULFILLED'].includes(status);
+  const pending =
+    submit.isPending || cancel.isPending || revise.isPending || convert.isPending || generateInvoice.isPending;
 
   return (
     <AppShell>
@@ -94,6 +103,15 @@ export default function QuotationDetailPage() {
                     className="rounded-md bg-green-600 px-3 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-60"
                   >
                     Convert to Fulfillment
+                  </button>
+                )}
+                {canInvoice && (
+                  <button
+                    onClick={() => generateInvoice.mutate()}
+                    disabled={pending}
+                    className="rounded-md bg-green-600 px-3 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-60"
+                  >
+                    Generate Invoice
                   </button>
                 )}
                 {canRevise && (

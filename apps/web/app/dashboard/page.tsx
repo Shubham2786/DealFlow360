@@ -5,10 +5,10 @@ import Link from 'next/link';
 import { AppShell } from '@/components/app-shell';
 import { Badge, EmptyState, SectionCard, StatTile } from '@/components/ui';
 import { api } from '@/lib/api';
+import { inr } from '@/lib/format';
 import { useRequireAuth } from '@/lib/use-auth';
 
-const currency = (n: number) =>
-  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
+const currency = (n: number) => inr(n);
 
 export default function DashboardPage() {
   const auth = useRequireAuth();

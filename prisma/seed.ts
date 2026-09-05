@@ -33,11 +33,11 @@ async function main() {
 
   // ---- Products (upsert by sku) ----
   const productSpecs = [
-    { sku: 'SKU-100', name: 'Laptop Pro 14', category: 'Hardware', basePrice: 1800, taxRate: 8 },
-    { sku: 'SKU-200', name: 'Mechanical Keyboard', category: 'Accessories', basePrice: 120, taxRate: 8 },
-    { sku: 'SKU-300', name: 'Wireless Mouse', category: 'Accessories', basePrice: 45, taxRate: 8 },
-    { sku: 'SKU-400', name: '4K Monitor 27"', category: 'Hardware', basePrice: 520, taxRate: 8 },
-    { sku: 'SKU-500', name: 'Support Plan (Annual)', category: 'Services', basePrice: 999, taxRate: 0, type: 'RECURRING' as const },
+    { sku: 'SKU-100', name: 'Laptop Pro 14', category: 'Hardware', basePrice: 85000, taxRate: 18 },
+    { sku: 'SKU-200', name: 'Mechanical Keyboard', category: 'Accessories', basePrice: 4500, taxRate: 18 },
+    { sku: 'SKU-300', name: 'Wireless Mouse', category: 'Accessories', basePrice: 1200, taxRate: 18 },
+    { sku: 'SKU-400', name: '4K Monitor 27"', category: 'Hardware', basePrice: 22000, taxRate: 18 },
+    { sku: 'SKU-500', name: 'Support Plan (Annual)', category: 'Services', basePrice: 40000, taxRate: 18, type: 'RECURRING' as const },
   ];
   const products: Record<string, { id: string; basePrice: number }> = {};
   for (const p of productSpecs) {
@@ -122,18 +122,18 @@ async function main() {
     expiresAt?: Date;
   };
   const quotes: QSpec[] = [
-    { number: 'Q-1001', customerId: acme.id, status: 'DRAFT', discountPct: 5, marginPct: 32, total: 4200 },
-    { number: 'Q-1002', customerId: globex.id, status: 'DRAFT', discountPct: 0, marginPct: 28, total: 890 },
+    { number: 'Q-1001', customerId: acme.id, status: 'DRAFT', discountPct: 5, marginPct: 32, total: 340000 },
+    { number: 'Q-1002', customerId: globex.id, status: 'DRAFT', discountPct: 0, marginPct: 28, total: 89000 },
     // Pending approval, aged → APPROVAL_STUCK
-    { number: 'Q-1003', customerId: acme.id, status: 'PENDING_APPROVAL', discountPct: 18, marginPct: 22, total: 15600, createdAt: daysFromNow(-9) },
+    { number: 'Q-1003', customerId: acme.id, status: 'PENDING_APPROVAL', discountPct: 18, marginPct: 22, total: 1560000, createdAt: daysFromNow(-9) },
     // Approved, healthy
-    { number: 'Q-1004', customerId: initech.id, status: 'APPROVED', discountPct: 8, marginPct: 30, total: 22000 },
+    { number: 'Q-1004', customerId: initech.id, status: 'APPROVED', discountPct: 8, marginPct: 30, total: 2200000 },
     // Low margin → CRITICAL
-    { number: 'Q-1005', customerId: globex.id, status: 'APPROVED', discountPct: 12, marginPct: 9, total: 7300 },
+    { number: 'Q-1005', customerId: globex.id, status: 'APPROVED', discountPct: 12, marginPct: 9, total: 730000 },
     // Negotiation nearing expiry → NEARING_EXPIRY
-    { number: 'Q-1006', customerId: acme.id, status: 'NEGOTIATION', discountPct: 10, marginPct: 24, total: 5400, expiresAt: daysFromNow(4) },
+    { number: 'Q-1006', customerId: acme.id, status: 'NEGOTIATION', discountPct: 10, marginPct: 24, total: 540000, expiresAt: daysFromNow(4) },
     // Invoiced/converted
-    { number: 'Q-1007', customerId: initech.id, status: 'INVOICED', discountPct: 6, marginPct: 27, total: 30500 },
+    { number: 'Q-1007', customerId: initech.id, status: 'INVOICED', discountPct: 6, marginPct: 27, total: 3050000 },
   ];
 
   const quoteByNumber: Record<string, string> = {};
@@ -166,6 +166,14 @@ async function main() {
   }
 
   // ---- Invoices (revenue, outstanding, overdue) ----
+  const inv = (total: number) => {
+    const subtotal = Math.round((total / 1.18) * 100) / 100;
+    return {
+      subtotal: new Prisma.Decimal(subtotal),
+      gstTotal: new Prisma.Decimal(Math.round((total - subtotal) * 100) / 100),
+      total: new Prisma.Decimal(total),
+    };
+  };
   await prisma.invoice.createMany({
     data: [
       {
@@ -175,8 +183,8 @@ async function main() {
         status: 'PAID',
         issueDate: daysFromNow(-30),
         dueDate: daysFromNow(-15),
-        total: new Prisma.Decimal(30500),
-        paidAmount: new Prisma.Decimal(30500),
+        ...inv(3050000),
+        paidAmount: new Prisma.Decimal(3050000),
       },
       {
         number: 'INV-2002',
@@ -184,8 +192,8 @@ async function main() {
         status: 'PARTIALLY_PAID',
         issueDate: daysFromNow(-10),
         dueDate: daysFromNow(20),
-        total: new Prisma.Decimal(12000),
-        paidAmount: new Prisma.Decimal(4000),
+        ...inv(1200000),
+        paidAmount: new Prisma.Decimal(400000),
       },
       // Overdue → CRITICAL anomaly + overdue KPI
       {
@@ -195,7 +203,7 @@ async function main() {
         status: 'OVERDUE',
         issueDate: daysFromNow(-45),
         dueDate: daysFromNow(-12),
-        total: new Prisma.Decimal(7300),
+        ...inv(730000),
         paidAmount: new Prisma.Decimal(0),
       },
       {
@@ -204,7 +212,7 @@ async function main() {
         status: 'ISSUED',
         issueDate: daysFromNow(-3),
         dueDate: daysFromNow(27),
-        total: new Prisma.Decimal(5400),
+        ...inv(540000),
         paidAmount: new Prisma.Decimal(0),
       },
     ],
