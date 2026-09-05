@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
+import { useState } from 'react';
 import { AppShell } from '@/components/app-shell';
 import { DealStatusBadge, EmptyState, LifecycleStepper, SectionCard } from '@/components/ui';
 import { api } from '@/lib/api';
@@ -44,6 +45,14 @@ export default function QuotationDetailPage() {
       router.push(`/invoices/${inv.id}`);
     },
   });
+  const [portalLink, setPortalLink] = useState<string | null>(null);
+  const sendToCustomer = useMutation({
+    mutationFn: () => api.negotiation.sendToCustomer(id),
+    onSuccess: async (r: { token: string }) => {
+      setPortalLink(`${window.location.origin}/customer-portal/${r.token}`);
+      await invalidate();
+    },
+  });
 
   if (auth.isLoading || auth.data === null) {
     return (
@@ -58,8 +67,11 @@ export default function QuotationDetailPage() {
   const canCancel = !['CANCELLED', 'COMPLETED', 'PAID'].includes(status);
   const canConvert = status === 'APPROVED' && can('TASK_ALLOCATE');
   const canInvoice = ['FULFILLED', 'PARTIALLY_FULFILLED'].includes(status) && can('FINANCE_TRANSACTION_APPROVE');
+  const canSendToCustomer =
+    can('DEAL_CREATE') && !['COMPLETED', 'CANCELLED', 'PAID', 'INVOICED', 'BILLING'].includes(status);
   const pending =
-    submit.isPending || cancel.isPending || revise.isPending || convert.isPending || generateInvoice.isPending;
+    submit.isPending || cancel.isPending || revise.isPending || convert.isPending ||
+    generateInvoice.isPending || sendToCustomer.isPending;
 
   return (
     <AppShell>
@@ -113,6 +125,15 @@ export default function QuotationDetailPage() {
                     Generate Invoice
                   </button>
                 )}
+                {canSendToCustomer && (
+                  <button
+                    onClick={() => sendToCustomer.mutate()}
+                    disabled={pending}
+                    className="rounded-md border border-brand-300 px-3 py-2 text-sm font-medium text-brand-700 hover:bg-brand-50 disabled:opacity-60"
+                  >
+                    Send to Customer
+                  </button>
+                )}
                 {canRevise && (
                   <button
                     onClick={() => revise.mutate()}
@@ -135,6 +156,21 @@ export default function QuotationDetailPage() {
                 )}
               </div>
             </div>
+
+            {portalLink && (
+              <div className="rounded-lg border border-brand-200 bg-brand-50 p-4 text-sm">
+                <div className="mb-1 font-medium text-brand-800">Customer portal link (share with the customer):</div>
+                <div className="flex items-center gap-2">
+                  <input readOnly value={portalLink} className="w-full rounded-md border border-slate-300 bg-white px-2 py-1 font-mono text-xs" />
+                  <button
+                    onClick={() => navigator.clipboard?.writeText(portalLink)}
+                    className="shrink-0 rounded-md bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-700"
+                  >
+                    Copy
+                  </button>
+                </div>
+              </div>
+            )}
 
             <SectionCard title="Lifecycle">
               <LifecycleStepper status={q.status} />

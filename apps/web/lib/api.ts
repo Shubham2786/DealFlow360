@@ -160,6 +160,24 @@ export const api = {
       apiFetch<CustomerItem>('/customers', { method: 'POST', body: JSON.stringify(input) }),
   },
 
+  negotiation: {
+    sendToCustomer: (quotationId: string) =>
+      apiFetch<{ token: string; expiresAt: string }>(`/quotations/${quotationId}/send-to-customer`, { method: 'POST' }),
+  },
+
+  portal: {
+    view: (token: string) => apiFetch<PortalView>(`/portal/${token}`),
+    accept: (token: string, message?: string) =>
+      apiFetch(`/portal/${token}/accept`, { method: 'POST', body: JSON.stringify({ message }) }),
+    reject: (token: string, message?: string) =>
+      apiFetch(`/portal/${token}/reject`, { method: 'POST', body: JSON.stringify({ message }) }),
+    requestChange: (token: string, message: string, requestedDiscountPct?: number) =>
+      apiFetch(`/portal/${token}/request-change`, {
+        method: 'POST',
+        body: JSON.stringify({ message, requestedDiscountPct }),
+      }),
+  },
+
   admin: {
     users: () => apiFetch<AdminUserItem[]>('/users'),
     roles: () => apiFetch<{ id: string; name: string; description: string | null }[]>('/roles'),
@@ -212,6 +230,21 @@ export interface CustomerItem {
   contactEmail: string | null;
   contactPhone: string | null;
   active: boolean;
+}
+
+export interface PortalView {
+  quoteNumber: string;
+  customer: string | null;
+  status: string;
+  negotiationStatus: string;
+  validUntil: string | null;
+  lines: { product: string; sku: string; qty: number; unitPrice: string; discountPct: string; lineTotal: string }[];
+  subtotal: string;
+  discountPct: string;
+  discountTotal: string;
+  taxTotal: string;
+  total: string;
+  messages: { author: string; body: string; at: string }[];
 }
 
 export interface AdminUserItem {

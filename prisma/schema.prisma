@@ -152,6 +152,7 @@ model Quotation {
   invoices      Invoice[]
   approvalRequests ApprovalRequest[]
   fulfillment   Fulfillment?
+  negotiation   Negotiation?
 
   @@index([status])
   @@index([customerId])
@@ -173,6 +174,45 @@ model QuotationLine {
 
   @@index([quotationId])
   @@map("quotation_lines")
+}
+
+// ---- Negotiation / Customer Portal ----
+model Negotiation {
+  id          String               @id @default(cuid())
+  quotationId String               @unique
+  quotation   Quotation            @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  status      String               @default("OPEN") // OPEN | CUSTOMER_RESPONDED | ACCEPTED | REJECTED | CLOSED
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  messages    NegotiationMessage[]
+  token       PortalToken?
+
+  @@map("negotiations")
+}
+
+model NegotiationMessage {
+  id                 String      @id @default(cuid())
+  negotiationId      String
+  negotiation        Negotiation @relation(fields: [negotiationId], references: [id], onDelete: Cascade)
+  author             String      // INTERNAL | CUSTOMER
+  body               String
+  requestedDiscountPct Decimal?  @db.Decimal(5, 2)
+  createdAt          DateTime    @default(now())
+
+  @@index([negotiationId])
+  @@map("negotiation_messages")
+}
+
+model PortalToken {
+  id            String      @id @default(cuid())
+  negotiationId String      @unique
+  negotiation   Negotiation @relation(fields: [negotiationId], references: [id], onDelete: Cascade)
+  token         String      @unique
+  expiresAt     DateTime
+  revoked       Boolean     @default(false)
+  createdAt     DateTime    @default(now())
+
+  @@map("portal_tokens")
 }
 
 // ---- Fulfillment / Inventory / Allocation / Backorders ----
