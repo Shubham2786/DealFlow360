@@ -1,0 +1,117 @@
+// Shared domain enums for DealFlow360.
+// Mirror of Prisma enums so web and api share a single source of truth.
+
+export enum UserRole {
+  SALESPERSON = 'SALESPERSON',
+  SALES_MANAGER = 'SALES_MANAGER',
+  FINANCE = 'FINANCE',
+  OPERATIONS = 'OPERATIONS',
+  ADMIN = 'ADMIN',
+}
+
+export enum QuotationStatus {
+  DRAFT = 'DRAFT',
+  SUBMITTED = 'SUBMITTED',
+  PENDING_APPROVAL = 'PENDING_APPROVAL',
+  CHANGES_REQUESTED = 'CHANGES_REQUESTED',
+  APPROVED = 'APPROVED',
+  REJECTED = 'REJECTED',
+  NEGOTIATION = 'NEGOTIATION',
+  CONVERTED_TO_FULFILLMENT = 'CONVERTED_TO_FULFILLMENT',
+  FULFILLING = 'FULFILLING',
+  PARTIALLY_FULFILLED = 'PARTIALLY_FULFILLED',
+  FULFILLED = 'FULFILLED',
+  BILLING = 'BILLING',
+  INVOICED = 'INVOICED',
+  PAID = 'PAID',
+  COMPLETED = 'COMPLETED',
+  CANCELLED = 'CANCELLED',
+}
+
+export enum ApprovalRequestStatus {
+  PENDING = 'PENDING',
+  APPROVED = 'APPROVED',
+  REJECTED = 'REJECTED',
+  CHANGES_REQUESTED = 'CHANGES_REQUESTED',
+  ESCALATED = 'ESCALATED',
+}
+
+export enum ApprovalStepStatus {
+  PENDING = 'PENDING',
+  APPROVED = 'APPROVED',
+  REJECTED = 'REJECTED',
+  CHANGES_REQUESTED = 'CHANGES_REQUESTED',
+  SKIPPED = 'SKIPPED',
+}
+
+export enum FulfillmentStatus {
+  PENDING = 'PENDING',
+  ALLOCATING = 'ALLOCATING',
+  ALLOCATED = 'ALLOCATED',
+  PARTIALLY_ALLOCATED = 'PARTIALLY_ALLOCATED',
+  BACKORDERED = 'BACKORDERED',
+  READY_TO_SHIP = 'READY_TO_SHIP',
+  FULFILLED = 'FULFILLED',
+  FAILED = 'FAILED',
+}
+
+export enum ReservationStatus {
+  ACTIVE = 'ACTIVE',
+  RELEASED = 'RELEASED',
+  FULFILLED = 'FULFILLED',
+  CANCELLED = 'CANCELLED',
+}
+
+export enum BackorderStatus {
+  OPEN = 'OPEN',
+  PARTIALLY_ALLOCATED = 'PARTIALLY_ALLOCATED',
+  FULFILLED = 'FULFILLED',
+  CANCELLED = 'CANCELLED',
+}
+
+export enum AllocationSource {
+  INITIAL = 'INITIAL',
+  BACKORDER = 'BACKORDER',
+}
+
+export enum SubscriptionStatus {
+  DRAFT = 'DRAFT',
+  ACTIVE = 'ACTIVE',
+  PAUSED = 'PAUSED',
+  CANCELLED = 'CANCELLED',
+  EXPIRED = 'EXPIRED',
+  PAST_DUE = 'PAST_DUE',
+}
+
+export enum InvoiceStatus {
+  DRAFT = 'DRAFT',
+  ISSUED = 'ISSUED',
+  PARTIALLY_PAID = 'PARTIALLY_PAID',
+  PAID = 'PAID',
+  OVERDUE = 'OVERDUE',
+  CANCELLED = 'CANCELLED',
+}
+
+export enum ProductType {
+  ONE_TIME = 'ONE_TIME',
+  RECURRING = 'RECURRING',
+}
+
+export enum BillingFrequency {
+  MONTHLY = 'MONTHLY',
+  QUARTERLY = 'QUARTERLY',
+  ANNUAL = 'ANNUAL',
+}
+
+export enum DealHealth {
+  HEALTHY = 'HEALTHY',
+  WARNING = 'WARNING',
+  CRITICAL = 'CRITICAL',
+}
+
+export enum CustomerSegment {
+  STANDARD = 'STANDARD',
+  SMB = 'SMB',
+  ENTERPRISE = 'ENTERPRISE',
+  STRATEGIC = 'STRATEGIC',
+}
