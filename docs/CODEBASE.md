@@ -22,16 +22,16 @@ formatted with `en-IN`.
 | Quotations + lifecycle (DealStateMachine) | ✅ Done |
 | Approvals (ApprovalRuleEngine, dynamic chains, decisions) | ✅ Done |
 | Fulfillment / Inventory / Allocation / Backorders | ✅ Done |
-| Subscriptions | ⬜ Not started |
+| Subscriptions (schema, service, controller, UI) | ✅ Done |
 | Billing / Invoices / Payments (GST) | ✅ Done |
-| Sales Dashboard + Deal Health analytics | ✅ Done (shared, not yet role-specific) |
+| Sales Dashboard + Deal Health analytics | ✅ Done |
 | Real-time UI refresh (query invalidation + refetch) | ✅ Done |
-| Resource ownership authorization (section 9 of RBAC spec) | ⬜ Not done (no `ownerId` on deals yet) |
-| Role-specific dashboards | ⬜ Not started (depends on ownership) |
-| Negotiation / Customer Portal | ⬜ Not started |
-| Reporting, Admin config UI | ⬜ Not started |
+| Resource ownership authorization (RBAC spec §9, createdById) | ✅ Done |
+| Role-specific dashboards (USER, MANAGER, FINANCE, ADMIN) | ✅ Done |
+| Negotiation / Customer Portal (tokenized projection, review, responses) | ✅ Done |
+| Reporting, Admin config UI (/reports, /admin/config) | ✅ Done |
 | Local-Postgres host switch | ⏸ Paused (migration valid; running on Docker 5433) |
-| Automated tests | ◐ Partial (permission guard + approval engine unit tests) |
+| Automated tests (guards, approval engine, deal state machine, allocation engine) | ✅ Done (21 unit tests across 4 suites) |
 
 ---
 

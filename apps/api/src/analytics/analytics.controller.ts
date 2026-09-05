@@ -21,7 +21,10 @@ export class AnalyticsController {
   }
 
   @Get('deal-health')
-  health() {
+  health(@CurrentUser() user: AuthUser) {
+    if (user.role === UserRole.CUSTOMER) {
+      throw new ForbiddenException('Deal health is for internal sales and operations personnel');
+    }
     return this.dealHealth.overview();
   }
 

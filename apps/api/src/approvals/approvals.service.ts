@@ -167,6 +167,9 @@ export class ApprovalsService {
 
   async reject(id: string, user: AuthUser, comment?: string) {
     const req = await this.get(id);
+    if (req.status !== ApprovalRequestStatus.PENDING) {
+      throw new ForbiddenException('Approval request is not pending');
+    }
     const step = this.currentStep(req.steps);
     if (!step) throw new ForbiddenException('No pending step');
     this.assertCanAct(user, step.role);
@@ -185,6 +188,9 @@ export class ApprovalsService {
 
   async requestChanges(id: string, user: AuthUser, comment?: string) {
     const req = await this.get(id);
+    if (req.status !== ApprovalRequestStatus.PENDING) {
+      throw new ForbiddenException('Approval request is not pending');
+    }
     const step = this.currentStep(req.steps);
     if (!step) throw new ForbiddenException('No pending step');
     this.assertCanAct(user, step.role);

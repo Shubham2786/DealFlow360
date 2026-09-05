@@ -15,11 +15,20 @@ const NAV: { href: string; label: string; perm?: string; anyOf?: string[] }[] = 
   { href: '/fulfillment', label: 'Fulfillment', perm: 'TASK_ALLOCATE' },
   { href: '/inventory', label: 'Inventory', perm: 'TASK_ALLOCATE' },
   { href: '/invoices', label: 'Invoices', perm: 'FINANCE_DATA_VIEW' },
+  { href: '/subscriptions', label: 'Subscriptions' },
   { href: '/deal-health', label: 'Deal Health' },
   { href: '/reports', label: 'Reports', anyOf: ['TEAM_VIEW', 'FINANCE_REPORT_GENERATE'] },
   { href: '/customers', label: 'Customers' },
   { href: '/products', label: 'Products' },
   { href: '/admin/users', label: 'Users', perm: 'USER_MANAGE' },
+  { href: '/admin/config', label: 'Configuration', perm: 'USER_MANAGE' },
+];
+
+const CUSTOMER_NAV = [
+  { href: '/dashboard', label: 'Dashboard' },
+  { href: '/quotations', label: 'My Proposals' },
+  { href: '/invoices', label: 'My Invoices' },
+  { href: '/subscriptions', label: 'My Subscriptions' },
 ];
 
 function initials(name?: string): string {
@@ -33,10 +42,13 @@ export function AppShell({ children }: { children: ReactNode }) {
   const qc = useQueryClient();
   const me = useCurrentUser();
   const { can } = usePermissions();
-  const nav = NAV.filter(
-    (item) =>
-      (!item.perm || can(item.perm)) && (!item.anyOf || item.anyOf.some((p) => can(p))),
-  );
+  const isCustomer = me.data?.role === 'CUSTOMER';
+  const nav = isCustomer
+    ? CUSTOMER_NAV
+    : NAV.filter(
+      (item) =>
+        (!item.perm || can(item.perm)) && (!item.anyOf || item.anyOf.some((p) => can(p))),
+    );
 
   const logout = useMutation({
     mutationFn: () => api.auth.logout(),

@@ -19,13 +19,13 @@ export class InvoicesController {
   constructor(private readonly billing: BillingService) { }
 
   @Get()
-  list() {
-    return this.billing.list();
+  list(@CurrentUser() user: AuthUser) {
+    return this.billing.list(user);
   }
 
   @Get(':id')
-  get(@Param('id') id: string) {
-    return this.billing.get(id);
+  get(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.billing.get(id, user);
   }
 
   @Post('from-quotation/:quotationId')

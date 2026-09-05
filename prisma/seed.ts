@@ -16,6 +16,7 @@ const ROLE_DESCRIPTIONS: Record<string, string> = {
   [UserRole.MANAGER]: 'Sales manager — approve deals, allocate fulfillment, view team',
   [UserRole.FINANCE]: 'Finance — billing, invoices, payments, financial reports',
   [UserRole.ADMIN]: 'Administrator — full access incl. user & role management',
+  [UserRole.CUSTOMER]: 'Customer portal user — view commercial proposals, fulfillments, invoices, and subscriptions',
 };
 
 async function seedRbac() {
@@ -63,6 +64,7 @@ async function seedUsers(roleByName: Record<string, string>) {
     { email: 'fiona@dealflow.test', name: 'Fiona Finance', role: UserRole.FINANCE, passwordHash: demoHash },
     { email: 'sam@dealflow.test', name: 'Sam Sales', role: UserRole.USER, passwordHash: demoHash },
     { email: 'uma@dealflow.test', name: 'Uma User', role: UserRole.USER, passwordHash: demoHash },
+    { email: 'rita@acme.test', name: 'Rita Reyes (Acme Corp)', role: UserRole.CUSTOMER, passwordHash: demoHash },
   ];
 
   const byEmail: Record<string, string> = {};
@@ -135,6 +137,59 @@ async function main() {
 
   const existingQuotes = await prisma.quotation.count();
   if (existingQuotes > 0) {
+    // Ensure Acme Corp (Rita) has an active subscription if none exists
+    const acmeCustomer = await prisma.customer.findFirst({ where: { contactEmail: 'rita@acme.test' } });
+    if (acmeCustomer) {
+      const acmeSubCount = await prisma.subscription.count({ where: { customerId: acmeCustomer.id } });
+      if (acmeSubCount === 0) {
+        const supportProd = await prisma.product.findFirst({ where: { sku: 'SKU-500' } });
+        if (supportProd) {
+          await prisma.subscription.create({
+            data: {
+              number: 'SUB-5002',
+              customerId: acmeCustomer.id,
+              status: 'ACTIVE',
+              frequency: 'ANNUAL',
+              startDate: daysFromNow(-15),
+              endDate: daysFromNow(350),
+              nextBillingDate: daysFromNow(350),
+              recurringAmount: new Prisma.Decimal(40000),
+              notes: 'Enterprise SLA & Hardware Warranty',
+              lines: {
+                create: [
+                  {
+                    productId: supportProd.id,
+                    qty: 1,
+                    unitPrice: new Prisma.Decimal(40000),
+                    lineTotal: new Prisma.Decimal(40000),
+                  },
+                ],
+              },
+            },
+          });
+        }
+      }
+
+      // Ensure negotiation & portal token exist for Q-1006 so portal review works out of the box
+      const q1006 = await prisma.quotation.findUnique({
+        where: { number: 'Q-1006' },
+        include: { negotiation: { include: { token: true } } },
+      });
+      if (q1006 && !q1006.negotiation) {
+        await prisma.negotiation.create({
+          data: {
+            quotationId: q1006.id,
+            status: 'OPEN',
+            token: {
+              create: {
+                token: 'demo-token-q1006-acme',
+                expiresAt: daysFromNow(14),
+              },
+            },
+          },
+        });
+      }
+    }
     console.log('[seed] Domain data already present — RBAC/users/products refreshed, skipping deals.');
     return;
   }
@@ -191,6 +246,32 @@ async function main() {
       { number: 'INV-3003', customerId: globex.id, quotationId: quoteByNumber['Q-1005'], status: 'OVERDUE', issueDate: daysFromNow(-45), dueDate: daysFromNow(-12), ...inv(730000), paidAmount: new Prisma.Decimal(0) },
       { number: 'INV-3004', customerId: acme.id, status: 'ISSUED', issueDate: daysFromNow(-3), dueDate: daysFromNow(27), ...inv(540000), paidAmount: new Prisma.Decimal(0) },
     ],
+  });
+
+  // ---- Subscriptions (Annual Support Plan) ----
+  await prisma.subscription.create({
+    data: {
+      number: 'SUB-5001',
+      customerId: initech.id,
+      quotationId: quoteByNumber['Q-1004'],
+      status: 'ACTIVE',
+      frequency: 'ANNUAL',
+      startDate: daysFromNow(-30),
+      endDate: daysFromNow(335),
+      nextBillingDate: daysFromNow(335),
+      recurringAmount: new Prisma.Decimal(40000),
+      notes: 'Standard 24x7 enterprise support & SLA coverage',
+      lines: {
+        create: [
+          {
+            productId: products['SKU-500'].id,
+            qty: 1,
+            unitPrice: new Prisma.Decimal(40000),
+            lineTotal: new Prisma.Decimal(40000),
+          },
+        ],
+      },
+    },
   });
 
   await prisma.auditEvent.createMany({

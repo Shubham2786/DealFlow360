@@ -61,14 +61,15 @@ export default function QuotationDetailPage() {
   }
 
   const q = quotation.data;
+  const isCustomer = auth.data?.role === 'CUSTOMER';
   const status = q?.status ?? '';
-  const canSubmit = status === 'DRAFT';
-  const canRevise = ['CHANGES_REQUESTED', 'REJECTED', 'NEGOTIATION'].includes(status);
-  const canCancel = !['CANCELLED', 'COMPLETED', 'PAID'].includes(status);
-  const canConvert = status === 'APPROVED' && can('TASK_ALLOCATE');
-  const canInvoice = ['FULFILLED', 'PARTIALLY_FULFILLED'].includes(status) && can('FINANCE_TRANSACTION_APPROVE');
+  const canSubmit = !isCustomer && status === 'DRAFT';
+  const canRevise = !isCustomer && ['CHANGES_REQUESTED', 'REJECTED', 'NEGOTIATION'].includes(status);
+  const canCancel = !isCustomer && !['CANCELLED', 'COMPLETED', 'PAID'].includes(status);
+  const canConvert = !isCustomer && status === 'APPROVED' && can('TASK_ALLOCATE');
+  const canInvoice = !isCustomer && ['FULFILLED', 'PARTIALLY_FULFILLED'].includes(status) && can('FINANCE_TRANSACTION_APPROVE');
   const canSendToCustomer =
-    can('DEAL_CREATE') && !['COMPLETED', 'CANCELLED', 'PAID', 'INVOICED', 'BILLING'].includes(status);
+    !isCustomer && can('DEAL_CREATE') && !['COMPLETED', 'CANCELLED', 'PAID', 'INVOICED', 'BILLING'].includes(status);
   const pending =
     submit.isPending || cancel.isPending || revise.isPending || convert.isPending ||
     generateInvoice.isPending || sendToCustomer.isPending;
@@ -77,7 +78,7 @@ export default function QuotationDetailPage() {
     <AppShell>
       <div className="space-y-6">
         <Link href="/quotations" className="text-sm text-brand-600 hover:underline">
-          ← Back to quotations
+          {isCustomer ? '← Back to proposals' : '← Back to quotations'}
         </Link>
 
         {quotation.isLoading && <EmptyState message="Loading quotation…" />}
@@ -98,6 +99,15 @@ export default function QuotationDetailPage() {
                 </p>
               </div>
               <div className="flex gap-2">
+                {isCustomer && !['CANCELLED', 'COMPLETED'].includes(status) && (
+                  <button
+                    onClick={() => sendToCustomer.mutate()}
+                    disabled={pending}
+                    className="rounded-md bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"
+                  >
+                    Open Customer Portal View →
+                  </button>
+                )}
                 {canSubmit && (
                   <button
                     onClick={() => submit.mutate()}
@@ -217,7 +227,7 @@ export default function QuotationDetailPage() {
                     <div className="mt-2 border-t border-slate-200 pt-2">
                       <Row label="Total" value={currency(q.total)} bold />
                     </div>
-                    <Row label="Margin" value={`${Number(q.marginPct)}%`} />
+                    {!isCustomer && <Row label="Margin" value={`${Number(q.marginPct)}%`} />}
                   </dl>
                 </SectionCard>
 

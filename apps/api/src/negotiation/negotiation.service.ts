@@ -134,6 +134,16 @@ export class NegotiationService {
     const quotationId = pt.negotiation.quotationId;
     const quote = pt.negotiation.quotation;
 
+    if (['ACCEPTED', 'REJECTED'].includes(pt.negotiation.status)) {
+      throw new BadRequestException(`This proposal has already been ${pt.negotiation.status.toLowerCase()}`);
+    }
+
+    if (requestedDiscountPct !== undefined && requestedDiscountPct !== null) {
+      if (requestedDiscountPct < 0 || requestedDiscountPct > 100) {
+        throw new BadRequestException('Requested discount must be between 0 and 100%');
+      }
+    }
+
     if (action === 'request-change') {
       await this.prisma.negotiationMessage.create({
         data: {

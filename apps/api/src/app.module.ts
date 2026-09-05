@@ -14,6 +14,8 @@ import { FulfillmentModule } from './fulfillment/fulfillment.module';
 import { InvoicesModule } from './invoices/invoices.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 
+import { SubscriptionsModule } from './subscriptions/subscriptions.module';
+
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
@@ -29,6 +31,7 @@ import { AnalyticsModule } from './analytics/analytics.module';
     FulfillmentModule,
     InvoicesModule,
     AnalyticsModule,
+    SubscriptionsModule,
   ],
   controllers: [HealthController],
 })

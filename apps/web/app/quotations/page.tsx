@@ -22,6 +22,7 @@ export default function QuotationsPage() {
     );
   }
 
+  const isCustomer = auth.data?.role === 'CUSTOMER';
   const rows = (quotations.data ?? []).filter((q) => !statusFilter || q.status === statusFilter);
   const statuses = Array.from(new Set((quotations.data ?? []).map((q) => q.status)));
 
@@ -29,11 +30,15 @@ export default function QuotationsPage() {
     <AppShell>
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Quotations</h1>
-          <p className="text-sm text-slate-500">All deals in the system.</p>
+          <h1 className="text-2xl font-bold text-slate-900">
+            {isCustomer ? 'Commercial Proposals' : 'Quotations'}
+          </h1>
+          <p className="text-sm text-slate-500">
+            {isCustomer ? 'Proposals and orders prepared for your company.' : 'All deals in the system.'}
+          </p>
         </div>
 
-        <SectionCard title="Deals">
+        <SectionCard title={isCustomer ? 'Your Proposals' : 'Deals'}>
           <div className="mb-3 flex items-center gap-2">
             <label className="text-sm text-slate-500">Status</label>
             <select
@@ -59,12 +64,12 @@ export default function QuotationsPage() {
               <table className="w-full min-w-[720px] text-left text-sm">
                 <thead>
                   <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
-                    <th className="py-2 pr-3">Quote</th>
+                    <th className="py-2 pr-3">{isCustomer ? 'Proposal' : 'Quote'}</th>
                     <th className="py-2 pr-3">Customer</th>
                     <th className="py-2 pr-3">Salesperson</th>
                     <th className="py-2 pr-3">Total</th>
                     <th className="py-2 pr-3">Discount</th>
-                    <th className="py-2 pr-3">Margin</th>
+                    {!isCustomer && <th className="py-2 pr-3">Margin</th>}
                     <th className="py-2 pr-3">Status</th>
                   </tr>
                 </thead>
@@ -80,7 +85,7 @@ export default function QuotationsPage() {
                       <td className="py-2 pr-3 text-slate-600">{q.salesperson?.name ?? '—'}</td>
                       <td className="py-2 pr-3 tabular-nums">{currency(q.total)}</td>
                       <td className="py-2 pr-3 tabular-nums">{Number(q.discountPct)}%</td>
-                      <td className="py-2 pr-3 tabular-nums">{Number(q.marginPct)}%</td>
+                      {!isCustomer && <td className="py-2 pr-3 tabular-nums">{Number(q.marginPct)}%</td>}
                       <td className="py-2 pr-3">
                         <DealStatusBadge status={q.status} />
                       </td>

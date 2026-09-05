@@ -8,6 +8,7 @@ export enum UserRole {
   MANAGER = 'MANAGER',
   FINANCE = 'FINANCE',
   ADMIN = 'ADMIN',
+  CUSTOMER = 'CUSTOMER',
 }
 
 // Permission names (data-backed via the Permission table).
@@ -46,6 +47,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     Permission.DEAL_APPROVE, // approves the finance step of a deal's approval chain
   ],
   [UserRole.ADMIN]: Object.values(Permission),
+  [UserRole.CUSTOMER]: [Permission.DEAL_VIEW_OWN],
 };
 
 export enum QuotationStatus {

@@ -1,10 +1,17 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { InvoiceStatus, QuotationStatus } from '@dealflow/shared';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { InvoiceStatus, QuotationStatus, UserRole } from '@dealflow/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { DealStateMachine } from '../quotations/deal-state-machine';
 
 type Actor = { id?: string; name?: string };
+
+export interface InvoiceViewer {
+  id?: string;
+  email?: string;
+  role?: string;
+  permissions?: string[];
+}
 
 @Injectable()
 export class BillingService {
@@ -14,14 +21,16 @@ export class BillingService {
     private readonly audit: AuditService,
   ) {}
 
-  list() {
+  list(viewer?: InvoiceViewer) {
+    const isCustomer = viewer?.role === UserRole.CUSTOMER;
     return this.prisma.invoice.findMany({
+      where: isCustomer && viewer?.email ? { customer: { contactEmail: viewer.email } } : undefined,
       orderBy: { createdAt: 'desc' },
       include: { customer: true, quotation: { select: { id: true, number: true } } },
     });
   }
 
-  async get(id: string) {
+  async get(id: string, viewer?: InvoiceViewer) {
     const invoice = await this.prisma.invoice.findUnique({
       where: { id },
       include: {
@@ -32,6 +41,13 @@ export class BillingService {
       },
     });
     if (!invoice) throw new NotFoundException(`Invoice ${id} not found`);
+
+    if (viewer?.role === UserRole.CUSTOMER) {
+      if (!invoice.customer?.contactEmail || invoice.customer.contactEmail !== viewer.email) {
+        throw new ForbiddenException('You do not have access to this invoice');
+      }
+    }
+
     return invoice;
   }
 

@@ -5,6 +5,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  Max,
   Min,
   ValidateNested,
 } from 'class-validator';
@@ -23,13 +24,13 @@ class QuotationLineDto {
   @IsString() productId!: string;
   @IsInt() @Min(1) qty!: number;
   @IsOptional() @IsNumber() @Min(0) unitPrice?: number;
-  @IsOptional() @IsNumber() @Min(0) discountPct?: number;
+  @IsOptional() @IsNumber() @Min(0) @Max(100) discountPct?: number;
 }
 
 class CreateQuotationDto {
   @IsString() customerId!: string;
   @IsOptional() @IsString() salespersonId?: string;
-  @IsOptional() @IsNumber() @Min(0) discountPct?: number;
+  @IsOptional() @IsNumber() @Min(0) @Max(100) discountPct?: number;
   @IsOptional() @IsString() expiresAt?: string;
   @IsArray() @ValidateNested({ each: true }) @Type(() => QuotationLineDto)
   lines!: QuotationLineDto[];

@@ -69,6 +69,49 @@ export default function LoginPage() {
           {mutation.isPending ? 'Signing in…' : 'Sign in'}
         </button>
 
+        <div className="border-t border-slate-200 pt-4">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
+            Quick Demo Logins (password: password123)
+          </p>
+          <div className="grid grid-cols-2 gap-1.5 text-xs">
+            <button
+              type="button"
+              onClick={() => { setEmail('admin@dealflow.test'); setPassword('password123'); }}
+              className="rounded border border-slate-200 bg-slate-50 px-2 py-1.5 text-left font-medium text-slate-700 hover:bg-brand-50 hover:text-brand-700"
+            >
+              👑 Admin
+            </button>
+            <button
+              type="button"
+              onClick={() => { setEmail('morgan@dealflow.test'); setPassword('password123'); }}
+              className="rounded border border-slate-200 bg-slate-50 px-2 py-1.5 text-left font-medium text-slate-700 hover:bg-brand-50 hover:text-brand-700"
+            >
+              💼 Manager
+            </button>
+            <button
+              type="button"
+              onClick={() => { setEmail('fiona@dealflow.test'); setPassword('password123'); }}
+              className="rounded border border-slate-200 bg-slate-50 px-2 py-1.5 text-left font-medium text-slate-700 hover:bg-brand-50 hover:text-brand-700"
+            >
+              📊 Finance
+            </button>
+            <button
+              type="button"
+              onClick={() => { setEmail('sam@dealflow.test'); setPassword('password123'); }}
+              className="rounded border border-slate-200 bg-slate-50 px-2 py-1.5 text-left font-medium text-slate-700 hover:bg-brand-50 hover:text-brand-700"
+            >
+              🎯 Sales (User)
+            </button>
+            <button
+              type="button"
+              onClick={() => { setEmail('rita@acme.test'); setPassword('password123'); }}
+              className="col-span-2 rounded border border-brand-200 bg-brand-50/50 px-2 py-1.5 text-left font-medium text-brand-800 hover:bg-brand-100"
+            >
+              🏢 Customer (Rita @ Acme Corp)
+            </button>
+          </div>
+        </div>
+
         <p className="text-center text-sm text-slate-500">
           No account?{' '}
           <Link href="/auth/signup" className="font-medium text-brand-600 hover:underline">

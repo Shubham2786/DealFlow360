@@ -56,7 +56,7 @@ export interface CurrentUser {
 }
 
 export interface DashboardMetrics {
-  variant: string; // USER | MANAGER | FINANCE | ADMIN
+  variant: string; // USER | MANAGER | FINANCE | ADMIN | CUSTOMER
   kpis: Partial<{
     activeDeals: number;
     draftQuotations: number;
@@ -70,7 +70,41 @@ export interface DashboardMetrics {
     totalUsers: number;
     revenue: number;
     pipelineValue: number;
+    activeProposals: number;
+    activeSubscriptions: number;
   }>;
+  customer?: {
+    id: string;
+    name: string;
+    segment: string;
+    contactName: string | null;
+    contactEmail: string | null;
+    accountManager: { name: string; email: string } | null;
+    proposals: {
+      id: string;
+      number: string;
+      total: number;
+      status: string;
+      validUntil: string | null;
+      token?: string;
+    }[];
+    invoices: {
+      id: string;
+      number: string;
+      total: number;
+      paidAmount: number;
+      status: string;
+      dueDate: string | null;
+    }[];
+    subscriptions: {
+      id: string;
+      number: string;
+      amount: number;
+      frequency: string;
+      status: string;
+      nextBillingDate: string | null;
+    }[];
+  } | null;
   alerts: { severity: string; label: string; href: string }[];
   recentActivity: { id: string; action: string; message: string | null; actor: string | null; at: string }[];
   generatedAt: string;
@@ -215,7 +249,67 @@ export const api = {
     requestChanges: (id: string, comment?: string) =>
       apiFetch(`/approvals/${id}/request-changes`, { method: 'POST', body: JSON.stringify({ comment }) }),
   },
+
+  subscriptions: {
+    list: () => apiFetch<SubscriptionItem[]>('/subscriptions'),
+    get: (id: string) => apiFetch<SubscriptionItem>(`/subscriptions/${id}`),
+    create: (dto: {
+      customerId: string;
+      quotationId?: string;
+      frequency?: string;
+      startDate?: string;
+      endDate?: string;
+      notes?: string;
+      lines: { productId: string; qty: number; unitPrice: number }[];
+    }) => apiFetch<SubscriptionItem>('/subscriptions', { method: 'POST', body: JSON.stringify(dto) }),
+    pause: (id: string) => apiFetch(`/subscriptions/${id}/pause`, { method: 'POST' }),
+    resume: (id: string) => apiFetch(`/subscriptions/${id}/resume`, { method: 'POST' }),
+    cancel: (id: string) => apiFetch(`/subscriptions/${id}/cancel`, { method: 'POST' }),
+  },
+
+  adminConfig: {
+    get: () => apiFetch<AdminConfigData>('/admin/config'),
+    update: (settings: Record<string, string>) =>
+      apiFetch<AdminConfigData>('/admin/config', { method: 'PATCH', body: JSON.stringify({ settings }) }),
+  },
 };
+
+export interface SubscriptionItem {
+  id: string;
+  number: string;
+  customerId: string;
+  status: string;
+  frequency: string;
+  startDate: string;
+  endDate: string | null;
+  nextBillingDate: string | null;
+  recurringAmount: string;
+  notes?: string | null;
+  createdAt: string;
+  customer?: { id: string; name: string } | null;
+  quotation?: { id: string; number: string } | null;
+  lines: {
+    id: string;
+    qty: number;
+    unitPrice: string;
+    lineTotal: string;
+    product: { id: string; sku: string; name: string };
+  }[];
+}
+
+export interface AdminConfigData {
+  settings: Record<string, string>;
+  system: {
+    environment: string;
+    databaseEngine: string;
+    localization: string;
+    rbacRoles: string[];
+  };
+  approvalPolicy: {
+    level1: { role: string; triggers: string[] };
+    level2: { role: string; triggers: string[] };
+  };
+}
 
 export interface InvoiceItem {
   id: string;

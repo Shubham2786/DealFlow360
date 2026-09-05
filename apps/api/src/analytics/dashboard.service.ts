@@ -18,6 +18,7 @@ const ACTIVE_STATUSES: QuotationStatus[] = [
 
 export interface DashboardViewer {
   id: string;
+  email?: string;
   role: string;
   permissions: string[];
 }
@@ -28,6 +29,39 @@ export interface Alert {
   href: string;
 }
 
+export interface CustomerDashboardData {
+  id: string;
+  name: string;
+  segment: string;
+  contactName: string | null;
+  contactEmail: string | null;
+  accountManager: { name: string; email: string } | null;
+  proposals: {
+    id: string;
+    number: string;
+    total: number;
+    status: string;
+    validUntil: string | null;
+    token?: string;
+  }[];
+  invoices: {
+    id: string;
+    number: string;
+    total: number;
+    paidAmount: number;
+    status: string;
+    dueDate: string | null;
+  }[];
+  subscriptions: {
+    id: string;
+    number: string;
+    amount: number;
+    frequency: string;
+    status: string;
+    nextBillingDate: string | null;
+  }[];
+}
+
 @Injectable()
 export class DashboardService {
   constructor(
@@ -36,12 +70,21 @@ export class DashboardService {
   ) { }
 
   /**
-   * Role-aware dashboard. USER sees only their own deals; MANAGER/ADMIN see team-wide;
-   * FINANCE/ADMIN additionally see billing KPIs; ADMIN sees system totals.
-   * `variant` tells the frontend which layout to render.
+   * Role-aware dashboard.
+   * - CUSTOMER sees their proposals, orders, invoices, and active subscriptions.
+   * - USER sees only their own deals.
+   * - MANAGER/ADMIN see team-wide.
+   * - FINANCE/ADMIN additionally see billing KPIs.
+   * - ADMIN sees system totals.
    */
   async metrics(viewer: DashboardViewer) {
     const now = new Date();
+    const isCustomer = viewer.role === UserRole.CUSTOMER;
+
+    if (isCustomer) {
+      return this.customerMetrics(viewer);
+    }
+
     const isTeam = viewer.role === UserRole.ADMIN || viewer.permissions.includes(Permission.DEAL_VIEW_TEAM);
     const isFinance = viewer.role === UserRole.ADMIN || viewer.permissions.includes(Permission.FINANCE_DATA_VIEW);
     const isAdmin = viewer.role === UserRole.ADMIN;
@@ -118,6 +161,138 @@ export class DashboardService {
         actor: e.actorName,
         at: e.createdAt,
       })),
+      generatedAt: now.toISOString(),
+    };
+  }
+
+  private async customerMetrics(viewer: DashboardViewer) {
+    const now = new Date();
+    const customer = await this.prisma.customer.findFirst({
+      where: viewer.email ? { contactEmail: viewer.email } : { id: '__none__' },
+      include: {
+        quotations: {
+          orderBy: { createdAt: 'desc' },
+          include: {
+            salesperson: { select: { name: true, email: true } },
+            negotiation: { include: { token: true } },
+          },
+        },
+        invoices: {
+          orderBy: { createdAt: 'desc' },
+        },
+        subscriptions: {
+          orderBy: { createdAt: 'desc' },
+        },
+      },
+    });
+
+    if (!customer) {
+      return {
+        variant: UserRole.CUSTOMER,
+        kpis: { activeProposals: 0, approvedDeals: 0, outstandingInvoices: 0, activeSubscriptions: 0 },
+        customer: null,
+        alerts: [],
+        recentActivity: [],
+        generatedAt: now.toISOString(),
+      };
+    }
+
+    const proposalStatuses: QuotationStatus[] = [
+      QuotationStatus.DRAFT,
+      QuotationStatus.SUBMITTED,
+      QuotationStatus.PENDING_APPROVAL,
+      QuotationStatus.NEGOTIATION,
+    ];
+    const orderStatuses: QuotationStatus[] = [
+      QuotationStatus.APPROVED,
+      QuotationStatus.CONVERTED_TO_FULFILLMENT,
+      QuotationStatus.FULFILLING,
+      QuotationStatus.PARTIALLY_FULFILLED,
+      QuotationStatus.FULFILLED,
+    ];
+
+    const activeProposals = customer.quotations.filter((q) =>
+      proposalStatuses.includes(q.status as QuotationStatus),
+    ).length;
+
+    const approvedDeals = customer.quotations.filter((q) =>
+      orderStatuses.includes(q.status as QuotationStatus),
+    ).length;
+
+    const outstandingInvoices = customer.invoices.filter(
+      (i) => i.status !== InvoiceStatus.PAID && i.status !== InvoiceStatus.CANCELLED,
+    ).length;
+
+    const activeSubscriptions = customer.subscriptions.filter(
+      (s) => s.status === 'ACTIVE',
+    ).length;
+
+    // Find account manager from the most recent quote with a salesperson
+    const repQuote = customer.quotations.find((q) => q.salesperson);
+    const accountManager = repQuote?.salesperson
+      ? { name: repQuote.salesperson.name, email: repQuote.salesperson.email }
+      : null;
+
+    const customerData: CustomerDashboardData = {
+      id: customer.id,
+      name: customer.name,
+      segment: customer.segment,
+      contactName: customer.contactName,
+      contactEmail: customer.contactEmail,
+      accountManager,
+      proposals: customer.quotations.map((q) => ({
+        id: q.id,
+        number: q.number,
+        total: Number(q.total),
+        status: q.status,
+        validUntil: q.expiresAt ? q.expiresAt.toISOString() : null,
+        token: q.negotiation?.token?.token,
+      })),
+      invoices: customer.invoices.map((i) => ({
+        id: i.id,
+        number: i.number,
+        total: Number(i.total),
+        paidAmount: Number(i.paidAmount),
+        status: i.status,
+        dueDate: i.dueDate ? i.dueDate.toISOString() : null,
+      })),
+      subscriptions: customer.subscriptions.map((s) => ({
+        id: s.id,
+        number: s.number,
+        amount: Number(s.recurringAmount),
+        frequency: s.frequency,
+        status: s.status,
+        nextBillingDate: s.nextBillingDate ? s.nextBillingDate.toISOString() : null,
+      })),
+    };
+
+    const alerts: Alert[] = [];
+    if (activeProposals > 0) {
+      alerts.push({
+        severity: 'info',
+        label: `${activeProposals} commercial proposal(s) available for your review`,
+        href: '/quotations',
+      });
+    }
+    if (outstandingInvoices > 0) {
+      alerts.push({
+        severity: 'warning',
+        label: `${outstandingInvoices} invoice(s) awaiting payment`,
+        href: '/invoices',
+      });
+    }
+
+    return {
+      variant: UserRole.CUSTOMER,
+      kpis: {
+        activeProposals,
+        approvedDeals,
+        outstandingInvoices,
+        activeSubscriptions,
+      },
+      customer: customerData,
+      alerts,
+      recentActivity: [],
       generatedAt: now.toISOString(),
     };
   }

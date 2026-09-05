@@ -4,7 +4,14 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Permission, QuotationStatus, UserRole } from '@dealflow/shared';
+import {
+  BackorderStatus,
+  FulfillmentStatus,
+  Permission,
+  QuotationStatus,
+  ReservationStatus,
+  UserRole,
+} from '@dealflow/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { DealStateMachine } from './deal-state-machine';
@@ -12,6 +19,7 @@ import { DealStateMachine } from './deal-state-machine';
 /** Minimal viewer context for ownership/visibility checks. */
 export interface Viewer {
   id: string;
+  email?: string;
   role: string;
   permissions: string[];
 }
@@ -52,6 +60,43 @@ export class QuotationsService {
 
     this.stateMachine.assertTransition(quotation.status as QuotationStatus, to);
 
+    // Release any active inventory reservations if quotation is cancelled
+    if (to === QuotationStatus.CANCELLED) {
+      const fulfillment = await this.prisma.fulfillment.findUnique({
+        where: { quotationId: id },
+        include: { lines: { include: { reservations: { where: { status: ReservationStatus.ACTIVE } } } } },
+      });
+      if (fulfillment) {
+        for (const line of fulfillment.lines) {
+          for (const res of line.reservations) {
+            await this.prisma.inventory.update({
+              where: { id: res.inventoryId },
+              data: { reserved: { decrement: res.quantity } },
+            });
+            await this.prisma.reservation.update({
+              where: { id: res.id },
+              data: { status: ReservationStatus.RELEASED, releasedAt: new Date() },
+            });
+          }
+          await this.prisma.fulfillmentLine.update({
+            where: { id: line.id },
+            data: { status: FulfillmentStatus.FAILED },
+          });
+        }
+        await this.prisma.fulfillment.update({
+          where: { id: fulfillment.id },
+          data: { status: FulfillmentStatus.FAILED },
+        });
+        await this.prisma.backorder.updateMany({
+          where: {
+            fulfillmentLine: { fulfillmentId: fulfillment.id },
+            status: { in: [BackorderStatus.OPEN, BackorderStatus.PARTIALLY_ALLOCATED] },
+          },
+          data: { status: BackorderStatus.CANCELLED },
+        });
+      }
+    }
+
     const updated = await this.prisma.quotation.update({
       where: { id },
       data: { status: to },
@@ -87,13 +132,34 @@ export class QuotationsService {
     return viewer.role === UserRole.ADMIN || (viewer.permissions ?? []).includes(Permission.DEAL_VIEW_TEAM);
   }
 
-  /** Lists deals scoped to the viewer: own only unless they can view the team. */
-  list(viewer?: Viewer) {
-    return this.prisma.quotation.findMany({
-      where: this.canViewAll(viewer) ? undefined : { createdById: viewer?.id ?? '__none__' },
+  /** Lists deals scoped to the viewer: own only unless they can view the team; customer gets their company's quotes. */
+  async list(viewer?: Viewer) {
+    const isCustomer = viewer?.role === UserRole.CUSTOMER;
+    let whereClause: Record<string, unknown> | undefined;
+
+    if (this.canViewAll(viewer)) {
+      whereClause = undefined;
+    } else if (isCustomer && viewer?.email) {
+      whereClause = { customer: { contactEmail: viewer.email } };
+    } else {
+      whereClause = { createdById: viewer?.id ?? '__none__' };
+    }
+
+    const quotes = await this.prisma.quotation.findMany({
+      where: whereClause,
       orderBy: { createdAt: 'desc' },
       include: { customer: true, salesperson: { select: { id: true, name: true } } },
     });
+
+    // ADR-0014: Never expose internal margin percentage to customer personas
+    if (isCustomer) {
+      return quotes.map((q) => ({
+        ...q,
+        marginPct: 0 as unknown as typeof q.marginPct,
+      }));
+    }
+
+    return quotes;
   }
 
   async get(id: string, viewer?: Viewer) {
@@ -107,10 +173,26 @@ export class QuotationsService {
       },
     });
     if (!quotation) throw new NotFoundException(`Quotation ${id} not found`);
-    // Ownership check: a plain user may only view their own deals.
+
+    const isCustomer = viewer?.role === UserRole.CUSTOMER;
+
+    // Ownership check: customer can only view deals addressed to their company email
+    if (isCustomer) {
+      if (!quotation.customer?.contactEmail || quotation.customer.contactEmail !== viewer?.email) {
+        throw new ForbiddenException('You do not have access to this proposal');
+      }
+      // ADR-0014: Redact margin from customer view
+      return {
+        ...quotation,
+        marginPct: 0 as unknown as typeof quotation.marginPct,
+      };
+    }
+
+    // Plain internal user may only view their own deals.
     if (!this.canViewAll(viewer) && quotation.createdById && quotation.createdById !== viewer?.id) {
       throw new ForbiddenException('You do not have access to this deal');
     }
+
     return quotation;
   }
 
@@ -128,6 +210,14 @@ export class QuotationsService {
       throw new BadRequestException('Quotation must contain at least one line');
     }
 
+    // Verify customer exists
+    const customer = await this.prisma.customer.findUnique({ where: { id: input.customerId } });
+    if (!customer) throw new NotFoundException(`Customer ${input.customerId} not found`);
+
+    if (input.discountPct !== undefined && (input.discountPct < 0 || input.discountPct > 100)) {
+      throw new BadRequestException('Header discount percentage must be between 0 and 100');
+    }
+
     const productIds = input.lines.map((l) => l.productId);
     const products = await this.prisma.product.findMany({ where: { id: { in: productIds } } });
     const byId = new Map(products.map((p) => [p.id, p]));
@@ -141,6 +231,12 @@ export class QuotationsService {
       const product = byId.get(line.productId);
       if (!product) throw new BadRequestException(`Product ${line.productId} not found`);
       if (line.qty <= 0) throw new BadRequestException('Line quantity must be greater than zero');
+      if (line.unitPrice !== undefined && line.unitPrice < 0) {
+        throw new BadRequestException('Unit price cannot be negative');
+      }
+      if (line.discountPct !== undefined && (line.discountPct < 0 || line.discountPct > 100)) {
+        throw new BadRequestException('Line discount percentage must be between 0 and 100');
+      }
 
       const unitPrice = line.unitPrice ?? Number(product.basePrice);
       const lineDiscount = line.discountPct ?? 0;

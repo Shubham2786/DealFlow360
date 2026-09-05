@@ -49,15 +49,34 @@ This file tracks finished, verified, and accepted work.
 - **Fulfillment / Inventory / Allocation / Backorders** — `AllocationEngine`, row-locked
   transactional allocation, reservations, idempotent receipts, backorder reprocessing,
   fulfill. Verified e2e (allocate 8 / backorder 2 / receive → reallocate / fulfill).
-- **Billing / Invoices / Payments** — GST invoices from fulfilled deals, partial/full
-  payments → deal COMPLETED, overpayment guard. Verified e2e.
+### Core domain & lifecycle extensions
+- **Resource Ownership** (`DEAL_VIEW_OWN`): Quotations carry `createdById`; list queries and detail fetches are strictly scoped to the creator unless `DEAL_VIEW_TEAM` or `ADMIN` is held.
+- **Negotiation / Customer Portal** (`TASK-F7`): Tokenized portal projection (`/portal/:token`) for external customer counter-offers, discount requests, acceptance, and quotation status synchronization.
+- **Subscriptions** (`TASK-F6-01`): `Subscription` and `SubscriptionLine` data models, `SubscriptionsService` with lifecycle controls (`pause`, `resume`, `cancel`), and `/subscriptions` management UI with frequency, INR totals, and status filters.
+- **Billing / Invoices / Payments** — GST invoices from fulfilled deals, partial/full payments → deal COMPLETED, overpayment guard. Verified e2e.
 
-### Analytics & UX
+### Analytics, Administration & UX
+- **Role-Specific Dashboards**: Variant-aware metrics for `USER` (My Deals), `MANAGER` (approvals/fulfillment), `FINANCE` (collections/overdue), and `ADMIN` (system overview).
+- **Reports Dashboard** (`TASK-F8-02`): Comprehensive company-wide performance metrics, deal conversion rates, and revenue breakdowns at `/reports`.
+- **Admin Configuration UI** (`TASK-F9-02`): Dedicated interface at `/admin/config` for system settings, policy thresholds, and environment inspection.
+- **Edge Cases & Multi-Persona Dashboards Hardening**:
+  - Added dedicated `CUSTOMER` role & Customer Portal & Dashboard variant (`VARIANT_META.CUSTOMER`) showing company-scoped commercial proposals, invoices, subscriptions, and dedicated account manager contact card.
+  - Implemented ADR-0014 margin redaction: internal profit margins (`marginPct`) and cost estimates are strictly hidden from customer API endpoints and UI surfaces.
+  - Fixed inventory reservation leaks on deal cancellation: active reservations are un-reserved and released (`ReservationStatus.RELEASED`), fulfillment marked `FAILED`, and backorders `CANCELLED`.
+  - Added strict pricing and validation floors: discounts validated between `0%` and `100%`, unit prices >= 0, and customer existence verified before quote creation.
+  - Enforced idempotency on approval decisions: `reject` and `requestChanges` reject already finalized requests.
+  - Guarded public portal negotiations against duplicate accept/reject actions.
+  - Added quick demo persona switcher on login page for Admin, Manager, Finance, Sales, and Customer testing.
+  - 5 test suites (27 unit tests) passing with 100% success rate.
 - **Sales Dashboard** (KPIs/alerts/activity) + **Deal Health** anomaly dashboard.
 - India localization: INR (₹) + GST + en-IN formatting; INR-scaled approval thresholds.
-- UX: header user menu + Logout, active-nav highlight, permission-filtered nav,
-  Customers + Admin Users pages.
+- UX: header user menu + Logout, active-nav highlight, permission-filtered nav, Customers, Admin Users, Subscriptions, and Admin Config pages.
 - Real-time refresh: TanStack Query refetch + broad invalidation after mutations.
 
 ### Tests
-- Unit tests: `PermissionsGuard` (allow/deny/admin/unauth), `ApprovalRuleEngine` (chains).
+- Unit tests:
+  - `PermissionsGuard` (allow/deny/admin/unauth)
+  - `ApprovalRuleEngine` (multi-level dynamic chains)
+  - `DealStateMachine` (valid transitions, terminal state enforcement, illegal transition rejection)
+  - `AllocationEngine` (priority warehouse allocation, partial splits, backorder generation)
+  - All 4 test suites (21 unit tests) passing green.

@@ -102,6 +102,7 @@ model Customer {
   quotations   Quotation[]
   invoices     Invoice[]
   fulfillments Fulfillment[]
+  subscriptions Subscription[]
 
   @@map("customers")
 }
@@ -124,6 +125,7 @@ model Product {
   quotationLines QuotationLine[]
   inventory        Inventory[]
   fulfillmentLines FulfillmentLine[]
+  subscriptionLines SubscriptionLine[]
 
   @@map("products")
 }
@@ -153,6 +155,7 @@ model Quotation {
   approvalRequests ApprovalRequest[]
   fulfillment   Fulfillment?
   negotiation   Negotiation?
+  subscriptions Subscription[]
 
   @@index([status])
   @@index([customerId])
@@ -436,6 +439,44 @@ model Payment {
 
   @@index([invoiceId])
   @@map("payments")
+}
+
+// ---- Subscriptions (Recurring contracts) ----
+model Subscription {
+  id              String             @id @default(cuid())
+  number          String             @unique
+  customerId      String
+  customer        Customer           @relation(fields: [customerId], references: [id])
+  quotationId     String?
+  quotation       Quotation?         @relation(fields: [quotationId], references: [id])
+  status          SubscriptionStatus @default(ACTIVE)
+  frequency       BillingFrequency   @default(ANNUAL)
+  startDate       DateTime           @default(now())
+  endDate         DateTime?
+  nextBillingDate DateTime?
+  recurringAmount Decimal            @default(0) @db.Decimal(14, 2)
+  notes           String?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  lines           SubscriptionLine[]
+
+  @@index([status])
+  @@index([customerId])
+  @@map("subscriptions")
+}
+
+model SubscriptionLine {
+  id             String       @id @default(cuid())
+  subscriptionId String
+  subscription   Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  productId      String
+  product        Product      @relation(fields: [productId], references: [id])
+  qty            Int          @default(1)
+  unitPrice      Decimal      @db.Decimal(14, 2)
+  lineTotal      Decimal      @db.Decimal(14, 2)
+
+  @@index([subscriptionId])
+  @@map("subscription_lines")
 }
 
 // ---- Audit ----
