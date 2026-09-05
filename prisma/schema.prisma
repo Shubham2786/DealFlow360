@@ -12,6 +12,17 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ---- System settings (key/value). First concrete model; used by Admin module. ----
+model AppSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("app_settings")
+}
+
 // ---- Shared domain enums (mirror packages/shared/src/enums.ts) ----
 
 enum UserRole {
