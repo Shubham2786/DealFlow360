@@ -31,7 +31,8 @@ attach to it as the deal progresses (a stateful domain graph, not a linear wizar
 | **Prisma** | Type-safe database access + migrations. `schema.prisma` defines models; `PrismaService` is injected everywhere. |
 | **PostgreSQL** | The database. Enforces uniqueness, foreign keys, and (for inventory) CHECK constraints; supports row locking for safe allocation. |
 | **Docker Compose** | Runs PostgreSQL locally (host port 5433). |
-| **JWT + argon2 + cookies** | Auth: argon2 hashes passwords; JWTs (access + refresh) are stored in HTTP-only cookies; refresh tokens are rotated. |
+| **JWT + argon2 + cookies** | Auth: argon2 hashes passwords; access + refresh JWTs in HTTP-only cookies; refresh rotation; token versioning invalidates sessions on role change. |
+| **RBAC (Role/Permission tables)** | Authorization: permissions resolved from the user's role and enforced by `@RequirePermissions` + `PermissionsGuard`. |
 | **pnpm workspaces** | Monorepo: `apps/web`, `apps/api`, `packages/shared`. |
 | **@dealflow/shared** | One source of truth for enums (statuses/roles) and DTO contracts, used by both apps. |
 
@@ -106,35 +107,36 @@ backend actions.
 
 ## 4. Workflow per user role
 
-RBAC is enforced on the backend (`RolesGuard`). ADMIN has universal access. The UI also
-hides actions a role can't perform, but that's convenience only — the API is the gate.
+Roles are **USER, MANAGER, FINANCE, ADMIN** (normalized RBAC). Authorization is enforced
+on the backend via `@RequirePermissions` + `PermissionsGuard` (permissions resolved from
+the user's role). ADMIN passes every check. Public signup always yields **USER**; only an
+ADMIN can change roles. The UI hides actions a role lacks, but that's convenience only —
+the API is the gate.
 
-### Salesperson
-- Log in → Sales Dashboard.
+### USER (`sam@`, `uma@`) — permissions: DEAL_VIEW_OWN, DEAL_CREATE, TASK_VIEW_OWN
+- Log in → Dashboard.
 - Create/edit **quotations**; add product lines; see live pricing and margin.
-- **Submit** a quote for approval; **revise** one sent back with changes; **cancel**.
-- Use the **Customer Portal** (planned) to share a quote for negotiation.
-- Cannot approve their own high-discount deals, or change pricing/approval config.
+- **Submit** a quote for approval; **revise** one sent back; **cancel**.
+- Cannot approve deals, allocate stock, manage billing, or change roles/config.
+- (Ownership scoping — "only my deals" — is a planned enhancement.)
 
-### Sales Manager
-- Everything a salesperson sees, plus team visibility.
-- Acts as the first **approver**: Approve / Reject / Request Changes on the approval chain.
-- Monitors **Deal Health** for risky deals.
+### MANAGER (`morgan@`) — adds DEAL_APPROVE, TASK_ALLOCATE, TEAM_VIEW, DEAL_VIEW_TEAM
+- First **approver**: Approve / Reject / Request Changes on the approval chain.
+- Owns **Fulfillment**: convert approved deals, run **allocation**, handle **backorders**,
+  **receive inventory**, mark orders **fulfilled**.
+- Monitors **Deal Health**.
 
-### Finance
-- Second-level **approver** for discount/margin/value thresholds.
-- Owns **Billing & Invoices**: issue invoices, record payments, watch overdue balances
-  (billing module in progress).
+### FINANCE (`fiona@`) — FINANCE_DATA_VIEW/TRANSACTION_APPROVE/REPORT_GENERATE, DEAL_APPROVE
+- **Finance-step approver** in the approval chain.
+- Owns **Billing & Invoices**: generate GST invoices, record payments (UPI/NEFT/…),
+  watch overdue balances.
 
-### Operations
-- Owns **Fulfillment**: convert approved deals to orders, run **allocation**, handle
-  **backorders**, **receive inventory**, and mark orders **fulfilled**.
-- Works from the Fulfillment and Inventory pages.
-
-### Admin
-- Universal access (can act at any approval level).
-- Manages **users/roles** and **configuration** (discount tiers, approval thresholds,
-  pricing) — admin module planned; thresholds currently live in the engines.
+### ADMIN (`admin@`) — all permissions
+- Universal access (can act at any approval level, any module).
+- **User & role management** (`/admin/users`): assign roles (invalidates the target's
+  sessions via token versioning).
+- Owns configuration (discount tiers, approval thresholds, pricing) — currently the
+  thresholds live in the engines; a config UI is planned.
 
 ---
 
@@ -154,12 +156,12 @@ hides actions a role can't perform, but that's convenience only — the API is t
 
 ## 6. Roles ↔ pages quick map
 
-| Page | Primary roles |
-|------|---------------|
-| `/dashboard`, `/deal-health` | all |
-| `/quotations`, `/quotations/:id` | Salesperson, Manager |
-| `/approvals`, `/approvals/:id` | Manager, Finance, Admin |
-| `/fulfillment`, `/fulfillment/:id`, `/inventory` | Operations, Admin |
-| `/products` | Admin (edit), all (view) |
-| `/invoices`, billing | Finance, Admin |
-| `/admin`, `/reports` | Admin (+ Manager/Finance for reports) |
+| Page | Visible to (permission) |
+|------|-------------------------|
+| `/dashboard`, `/deal-health`, `/customers` | all authenticated |
+| `/quotations`, `/quotations/:id` | all (create needs DEAL_CREATE) |
+| `/approvals`, `/approvals/:id` | MANAGER, FINANCE, ADMIN (DEAL_APPROVE) |
+| `/fulfillment`, `/fulfillment/:id`, `/inventory` | MANAGER, ADMIN (TASK_ALLOCATE) |
+| `/invoices`, `/invoices/:id` | FINANCE, ADMIN (FINANCE_DATA_VIEW) |
+| `/products` | all (view); create/edit needs SYSTEM_CONFIG_MANAGE (ADMIN) |
+| `/admin/users` | ADMIN (USER_MANAGE / ROLE_ASSIGN) |

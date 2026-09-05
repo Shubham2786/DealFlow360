@@ -1,369 +1,268 @@
 # DealFlow360 — Codebase Documentation
 
-> Developer reference for the code built so far (foundation, DB bootstrap, API/web shells,
-> Auth + RBAC, Audit, Customers, Products, Quotations + lifecycle, Approvals, Invoices
-> read model, and the Sales + Deal Health dashboards). It explains **what** libraries/tools
-> are used, **why**, **what each function does**, and **how requests are routed and where
-> functions are used**. The full current schema is in §6. Updated as modules land.
+> Developer reference for the implemented system: what libraries/tools are used and why,
+> what each part does, how requests are routed, and how it all fits together. Updated as
+> modules land. Companion docs: `/project.md` (design), `docs/WORKFLOW.md` (per-role
+> flows), `docs/ARCHITECTURE.md`, `docs/API.md`, `docs/DATABASE.md`, `docs/DECISIONS.md`.
+
+Context: the app is localized for **India** — currency is **INR (₹)** and tax is **GST**,
+formatted with `en-IN`.
 
 ---
 
-## 1. Technology Choices & Rationale
+## 1. Project progress (status)
 
-### Tooling
-
-| Tool | Version | Why |
-|------|---------|-----|
-| **pnpm workspaces** | 11.x | Monorepo without heavy orchestration (Turbo/Nx). Symlinks shared code; single install. pnpm 11 requires `allowBuilds` in `pnpm-workspace.yaml` to run native build scripts. |
-| **TypeScript** | 5.x | Type safety across api/web/shared; one shared type source. |
-| **Docker Compose** | — | Local PostgreSQL, reproducible, no host install needed. |
-| **Git** | — | Per-module commit history. |
-
-### Backend (`apps/api`)
-
-| Library | Why |
-|---------|-----|
-| **NestJS** | Structured DI, modules, guards, decorators — enforces the controllers → services → engines layering. |
-| **Prisma** | Type-safe DB client + migrations against PostgreSQL. |
-| **@nestjs/jwt** | Sign/verify JWT access & refresh tokens. |
-| **argon2** | Password hashing (memory-hard, current best practice over bcrypt). |
-| **cookie-parser** | Parse HTTP-only auth cookies into `req.cookies`. |
-| **class-validator / class-transformer** | Declarative DTO validation at the HTTP boundary via the global `ValidationPipe`. |
-| **@nestjs/config** | Env config (`.env`) available app-wide. |
-
-### Frontend (`apps/web`)
-
-| Library | Why |
-|---------|-----|
-| **Next.js (App Router)** | React framework, file-based routing, server/client components. |
-| **TanStack Query** | Server-state caching, loading/error states, mutations — avoids ad-hoc fetch state. |
-| **Tailwind CSS** | Utility-first styling for a consistent design system. |
-
-### Shared (`packages/shared`)
-
-- Plain TS + **Zod**. Holds domain **enums** and **DTO schemas** so api and web never
-  drift. Compiled to `dist` and consumed via the workspace symlink (`@dealflow/shared`).
+| Area | Status |
+|------|--------|
+| Foundation, monorepo, Docker Postgres, Prisma | ✅ Done |
+| Auth (JWT access+refresh cookies, argon2) | ✅ Done |
+| **RBAC** (Role/Permission tables, permission guards, signup→USER, admin role assignment, token versioning) | ✅ Done |
+| Audit log + activity feed | ✅ Done |
+| Customers, Products (catalog + activate/deactivate) | ✅ Done |
+| Quotations + lifecycle (DealStateMachine) | ✅ Done |
+| Approvals (ApprovalRuleEngine, dynamic chains, decisions) | ✅ Done |
+| Fulfillment / Inventory / Allocation / Backorders | ✅ Done |
+| Subscriptions | ⬜ Not started |
+| Billing / Invoices / Payments (GST) | ✅ Done |
+| Sales Dashboard + Deal Health analytics | ✅ Done (shared, not yet role-specific) |
+| Real-time UI refresh (query invalidation + refetch) | ✅ Done |
+| Resource ownership authorization (section 9 of RBAC spec) | ⬜ Not done (no `ownerId` on deals yet) |
+| Role-specific dashboards | ⬜ Not started (depends on ownership) |
+| Negotiation / Customer Portal | ⬜ Not started |
+| Reporting, Admin config UI | ⬜ Not started |
+| Local-Postgres host switch | ⏸ Paused (migration valid; running on Docker 5433) |
+| Automated tests | ◐ Partial (permission guard + approval engine unit tests) |
 
 ---
 
-## 2. Repository Map
+## 2. Technology choices & rationale
+
+| Tool | Used for |
+|------|----------|
+| **Next.js (App Router) + React** | Web UI; file-based routing; client components + TanStack Query |
+| **TypeScript** | End-to-end types across web / api / shared |
+| **Tailwind CSS** | Styling + a small shared component set (`components/ui.tsx`) |
+| **TanStack Query** | Server-state cache, loading/error, mutations, and auto-refresh |
+| **NestJS** | Backend structure: modules, controllers, services, guards, DI |
+| **Prisma + PostgreSQL 16** | Type-safe DB access, migrations, constraints, row locking |
+| **JWT + argon2 + cookies** | Auth: argon2 hashing; access+refresh JWTs in HTTP-only cookies; refresh rotation; token versioning |
+| **Docker Compose** | Local PostgreSQL (port 5433) |
+| **pnpm workspaces** | Monorepo: `apps/web`, `apps/api`, `packages/shared` |
+| **Jest + ts-jest** | Unit tests (guard, engine) |
+
+**Layering (the boundary):** Browser → NestJS Controllers (validate DTO + RBAC guard) →
+Services (business logic + transactions) → Domain engines (pure: DealStateMachine,
+ApprovalRuleEngine, AllocationEngine) → Prisma → PostgreSQL, with AuditService writing an
+append-only activity log. No critical business logic lives in the frontend.
+
+---
+
+## 3. Repository map
 
 ```text
-apps/
-  api/                      NestJS backend
-    src/
-      main.ts               bootstrap (prefix, pipes, CORS, cookies)
-      app.module.ts         root module wiring
-      prisma/               PrismaService + global module
-      health/               health check endpoint
-      auth/                 auth service/controller, guards, decorators, DTOs
-  web/                      Next.js frontend
-    app/                    routes (App Router)
-      layout.tsx            root layout + providers
-      page.tsx              redirects → /dashboard
-      providers.tsx         React Query provider
-      dashboard/page.tsx    dashboard (auth-guarded)
-      auth/login/page.tsx   login form
-      auth/signup/page.tsx  signup form
-    components/app-shell.tsx sidebar + header layout
-    lib/api.ts              typed fetch client
-    lib/use-auth.ts         auth hooks (useCurrentUser, useRequireAuth)
-packages/shared/src/        enums.ts, contracts.ts, index.ts
-prisma/                     schema.prisma, migrations/, seed.ts
-docker-compose.yml          local PostgreSQL (host port 5433)
+apps/api/src/
+  main.ts, app.module.ts            bootstrap + module wiring
+  prisma/                           PrismaService (global)
+  health/                           GET /health
+  auth/                             auth service/controller, guards, decorators, dtos
+  users/                            admin user list + role assignment
+  audit/                            AuditService (global) + activity feed
+  customers/  products/             catalog + accounts
+  quotations/                       deal core + DealStateMachine
+  approvals/                        ApprovalRuleEngine + decisions
+  fulfillment/                      AllocationEngine, inventory, reservations, backorders
+  invoices/                         BillingService (invoices + payments, GST)
+  analytics/                        dashboard metrics + deal-health engine
+apps/web/
+  app/                              routes (App Router) — see §7
+  components/                       app-shell (nav + user menu), ui primitives
+  lib/                              api client, use-auth (+permissions), format (INR/en-IN)
+packages/shared/src/                enums (roles, permissions, statuses), Zod contracts
+prisma/                            schema.prisma, migrations/, seed.ts
 ```
 
 ---
 
-## 3. Backend — Functions, Routing & Usage
+## 4. Authentication & Authorization (RBAC)
 
-### 3.1 `apps/api/src/main.ts` — `bootstrap()`
-The API entry point. Steps and why:
-1. `NestFactory.create(AppModule)` — builds the DI container.
-2. `app.setGlobalPrefix('api')` — every route is served under `/api`.
-3. `app.use(cookieParser())` — populates `req.cookies` so guards can read auth cookies.
-4. `useGlobalPipes(new ValidationPipe({ whitelist, transform, forbidNonWhitelisted }))` —
-   validates/sanitizes all incoming DTOs; strips unknown fields and rejects extras.
-5. `enableCors({ origin: WEB_ORIGIN, credentials: true })` — allows the browser to send
-   cookies cross-origin from the Next.js app.
-6. `app.listen(API_PORT)` — starts HTTP server (default `3001`).
+Privilege is **granted by the backend, never requested by the user.**
 
-**Used by:** the `start`/`start:dev`/`start:prod` scripts. Nothing calls it directly.
+### Data model
+Normalized RBAC: `roles`, `permissions`, `role_permissions` (join), and `users` carry
+`roleId` (FK), `status`, and `tokenVersion`. Role names: **USER, MANAGER, FINANCE,
+ADMIN**. The role→permission matrix lives in `packages/shared` (`ROLE_PERMISSIONS`) and is
+seeded into the DB; ADMIN gets every permission.
 
-### 3.2 `apps/api/src/app.module.ts` — `AppModule`
-Root module. Imports `ConfigModule.forRoot({ isGlobal: true })` (env), `PrismaModule`
-(DB), `AuthModule` (auth); registers `HealthController`. This is the composition root —
-new feature modules get imported here as they are built.
+Permissions: `DEAL_VIEW_OWN`, `DEAL_VIEW_TEAM`, `DEAL_CREATE`, `DEAL_APPROVE`,
+`TASK_VIEW_OWN`, `TASK_ALLOCATE`, `TEAM_VIEW`, `FINANCE_DATA_VIEW`,
+`FINANCE_TRANSACTION_APPROVE`, `FINANCE_REPORT_GENERATE`, `USER_MANAGE`, `ROLE_ASSIGN`,
+`SYSTEM_CONFIG_MANAGE`.
 
-### 3.3 `apps/api/src/prisma/`
-- **`PrismaService`** extends `PrismaClient` and implements:
-  - `onModuleInit()` → `this.$connect()` (opens the DB connection at startup; logs it).
-  - `onModuleDestroy()` → `this.$disconnect()` (clean shutdown).
-  It is the single DB access point injected into every service.
-- **`PrismaModule`** is `@Global()` and exports `PrismaService`, so any module can inject
-  it without re-importing.
+### Guards & decorators (`auth/`)
+- **`JwtAuthGuard`** (async) — verifies the JWT from the `df_access` cookie (or Bearer),
+  then **loads the user + role + permissions from the DB**, checks `status === ACTIVE`,
+  and enforces **token versioning** (rejects if the token's `tokenVersion` ≠ the user's
+  current one). Attaches `req.user = { id, email, name, role, permissions[] }`.
+- **`PermissionsGuard`** — reads `@RequirePermissions(...)` metadata and allows the request
+  only if the user has all required permissions (ADMIN passes universally); else 403.
+- **`@RequirePermissions(Permission…)`** — declares required permissions on a handler.
+- **`@CurrentUser()`** — injects `req.user` into a handler param.
 
-**Used by:** `HealthController`, `AuthService`, and all future services.
+### AuthService functions
+- `signup(dto)` — **always assigns the USER role** (looks up the Role row); the DTO has no
+  `role` field and the global `ValidationPipe` (`forbidNonWhitelisted`) rejects any `role`
+  a client tries to send (400).
+- `login(dto)` — argon2 verify; issues tokens.
+- `issueTokens(user)` — access JWT payload = `{ sub, email, name, role, tokenVersion }`;
+  refresh JWT stored **hashed** with rotation.
+- `refresh` / `logout` — rotate / revoke refresh tokens.
+- `me(userId)` — safe projection incl. `role` + resolved `permissions[]`.
 
-### 3.4 `apps/api/src/health/health.controller.ts`
-- **Route:** `GET /api/health`
-- **`check()`** runs `SELECT 1` via Prisma. Returns `{ status, db, timestamp }`:
-  `status: 'ok'` when the DB responds, `'degraded'` otherwise. Never throws — it reports
-  connectivity rather than failing.
+### UsersService (admin)
+- `list()` / `listRoles()` — safe user + role listings.
+- `assignRole(userId, roleName, actor)` — **ADMIN-only** (`ROLE_ASSIGN`); changes the
+  user's role, **increments `tokenVersion`** and revokes refresh tokens so the change takes
+  effect immediately (old sessions → 401). Audited.
 
-**Used by:** the web dashboard's API-connectivity card (`api.health()`), and manual
-uptime checks.
-
-### 3.5 Auth module (`apps/api/src/auth/`)
-
-#### DTOs — `dto/auth.dto.ts`
-- **`LoginDto`** `{ email, password(min8), rememberMe? }`
-- **`SignupDto`** `{ email, password(min8), name, role? }`
-Decorated with class-validator rules; the global `ValidationPipe` enforces them before a
-controller method runs. Invalid input → `400`.
-
-#### Guards
-- **`JwtAuthGuard.canActivate(ctx)`** (`guards/jwt-auth.guard.ts`)
-  - `extract(req)` reads the token from the `df_access` cookie, falling back to a
-    `Bearer` header.
-  - Verifies it with `JWT_ACCESS_SECRET`. On success attaches
-    `req.user = { id, email, role, name }` and returns `true`. On failure throws
-    `401 Unauthorized`.
-  - Exposes cookie-name constants `ACCESS_COOKIE = 'df_access'`, `REFRESH_COOKIE = 'df_refresh'`.
-  - **Used by:** any route with `@UseGuards(JwtAuthGuard)` (currently `GET /auth/me`; all
-    future protected routes).
-- **`RolesGuard.canActivate(ctx)`** (`guards/roles.guard.ts`)
-  - Reads required roles from the `@Roles(...)` metadata via `Reflector`.
-  - If none are required → allow. Otherwise allow when the user's role matches or the user
-    is `ADMIN` (universal access). Else throws `403 Forbidden`.
-  - **Used by:** future role-restricted routes, paired with `JwtAuthGuard`.
-
-#### Decorators
-- **`@Roles(...roles)`** (`decorators/roles.decorator.ts`) attaches required-role metadata
-  read by `RolesGuard`.
-- **`@CurrentUser(field?)`** (`decorators/current-user.decorator.ts`) pulls `req.user`
-  (set by `JwtAuthGuard`) into a handler param; optional `field` returns one property.
-
-#### Service — `auth.service.ts` (business logic)
-Private helpers:
-- **`sha256(value)`** — hashes refresh tokens before storing them (never store raw tokens).
-- **`issueTokens(user)`** — signs an access token (`JWT_ACCESS_SECRET`, short TTL) and a
-  refresh token (`JWT_REFRESH_SECRET`, long TTL, random `jti`), stores the **hashed**
-  refresh token in `refresh_tokens`, and returns the pair. Central to login/signup/refresh.
-
-Public methods:
-- **`signup(dto)`** — rejects duplicate email (`409`), hashes the password with argon2,
-  creates the `User`, returns tokens.
-- **`login(dto)`** — looks up the user, checks `active`, verifies the password with
-  `argon2.verify`; invalid → `401`; else returns tokens.
-- **`refresh(refreshToken)`** — verifies the refresh JWT, confirms the hashed token exists
-  and is not revoked/expired, **rotates** it (marks the old one revoked), and issues a new
-  pair. Missing/invalid → `401`.
-- **`logout(refreshToken)`** — revokes the stored refresh token (idempotent; safe if
-  already gone).
-- **`me(userId)`** — returns the safe user projection (no `passwordHash`).
-
-#### Controller — `auth.controller.ts` (HTTP + cookies)
-Cookie helpers:
-- **`setCookies(res, tokens)`** — writes `df_access` and `df_refresh` as `httpOnly`,
-  `sameSite=lax`, `secure` in production, with TTL-based `maxAge`.
-- **`clearCookies(res)`** — removes both cookies on logout.
-
-Routes (all under `/api/auth`):
-
-| Method & Route | Handler | Guard | What it does |
-|----------------|---------|-------|--------------|
-| `POST /auth/signup` | `signup()` | — | Creates account, sets cookies, `{ ok: true }` |
-| `POST /auth/login` | `login()` | — | Authenticates, sets cookies |
-| `POST /auth/refresh` | `refresh()` | — | Rotates tokens using `df_refresh` cookie |
-| `POST /auth/logout` | `logout()` | — | Revokes refresh token, clears cookies |
-| `GET /auth/me` | `me()` | `JwtAuthGuard` | Returns current user (via `@CurrentUser`) |
-
-#### `AuthModule`
-Imports `JwtModule.register({})` (secrets/TTL passed per-call in the service), declares
-`AuthController`, provides/exports `AuthService`, `JwtAuthGuard`, `RolesGuard` so other
-modules can guard their routes.
+### Auth/Users routes
+| Route | Guard |
+|-------|-------|
+| `POST /auth/signup\|login\|refresh\|logout`, `GET /auth/me` | public / auth |
+| `GET /users`, `GET /roles` | `USER_MANAGE` |
+| `PATCH /users/:id/role` | `ROLE_ASSIGN` |
 
 ---
 
-## 4. Frontend — Functions, Routing & Usage
+## 5. Domain modules — functions & routes
 
-### 4.1 Routing (Next.js App Router)
+All routes are under `/api` and require authentication (`JwtAuthGuard`) unless noted;
+permission-gated routes add `PermissionsGuard` + `@RequirePermissions`.
 
-| Route | File | Notes |
-|-------|------|-------|
-| `/` | `app/page.tsx` | Server redirect → `/dashboard` |
-| `/dashboard` | `app/dashboard/page.tsx` | Auth-guarded operational overview |
-| `/auth/login` | `app/auth/login/page.tsx` | Login form |
-| `/auth/signup` | `app/auth/signup/page.tsx` | Signup form |
+| Module | Key routes | Permission | Notes |
+|--------|-----------|-----------|-------|
+| Customers | `GET/POST /customers`, `GET /customers/:id` | auth | audits create |
+| Products | `GET /products`, `GET /products/:id` | auth | |
+| Products | `POST /products`, `PATCH /products/:id` | `SYSTEM_CONFIG_MANAGE` | create / activate-deactivate |
+| Quotations | `GET /quotations`, `GET /quotations/:id` | auth | server-side pricing + margin |
+| Quotations | `POST /quotations` | `DEAL_CREATE` | |
+| Quotations | `POST /quotations/:id/submit\|cancel\|revise` | auth | `DealStateMachine` guards transitions; submit builds the approval chain |
+| Approvals | `GET /approvals`, `GET /approvals/:id` | auth | |
+| Approvals | `POST /approvals/:id/approve\|reject\|request-changes` | `DEAL_APPROVE` | advances steps + drives quote lifecycle |
+| Fulfillment | `GET /fulfillment`, `GET /fulfillment/:id`, `GET /inventory`, `GET /warehouses` | auth | |
+| Fulfillment | `POST /fulfillment/from-quotation/:id`, `/:id/allocate`, `/:id/fulfill`, `POST /inventory/receive` | `TASK_ALLOCATE` | transactional allocation + backorders |
+| Invoices | `GET /invoices`, `GET /invoices/:id` | auth | GST line items + payments |
+| Invoices | `POST /invoices/from-quotation/:id`, `/:id/payments`, `/:id/cancel` | `FINANCE_TRANSACTION_APPROVE` | drives lifecycle to PAID/COMPLETED |
+| Analytics | `GET /dashboard/metrics`, `GET /deal-health` | auth | aggregation over live data |
 
-The sidebar (`app-shell.tsx`) also links to future routes (quotations, approvals, etc.).
+### Domain engines (pure)
+- **`DealStateMachine`** — authoritative quotation transition table; `assertTransition`
+  rejects invalid moves.
+- **`ApprovalRuleEngine.computeChain(facts)`** — from discount/margin/value returns an
+  ordered approver chain (MANAGER → +FINANCE → +ADMIN) or `[]` for auto-approve.
+  Thresholds are INR-scaled (₹2L finance, ₹10L executive).
+- **`AllocationEngine.allocate(outstanding, availability)`** — deterministic priority-fill;
+  returns the per-warehouse plan + backordered quantity. No I/O.
 
-### 4.2 `app/layout.tsx` — `RootLayout`
-Wraps every page in `<Providers>` and imports global styles. Sets page metadata.
-
-### 4.3 `app/providers.tsx` — `Providers`
-Creates one `QueryClient` (memoized in `useState`) and supplies `QueryClientProvider`.
-Defaults: 1 retry, no refetch-on-focus, 30s stale time. Enables all data hooks.
-
-### 4.4 `lib/api.ts` — typed fetch client
-- **`apiFetch<T>(path, init)`** — wraps `fetch` with `credentials: 'include'` (sends auth
-  cookies), JSON headers, `no-store`. On non-2xx, parses the error body and throws
-  **`ApiError(status, message)`**. Returns parsed JSON (or `undefined` for `204`).
-- **`ApiError`** — error type carrying HTTP `status`; lets callers branch on `401`, etc.
-- **`api`** object — grouped callers used across the UI:
-  - `api.health()` → `GET /health`
-  - `api.auth.login(email, password)` → `POST /auth/login`
-  - `api.auth.signup(input)` → `POST /auth/signup`
-  - `api.auth.logout()` → `POST /auth/logout`
-  - `api.auth.me()` → `GET /auth/me`
-
-### 4.5 `lib/use-auth.ts` — auth hooks
-- **`useCurrentUser()`** — `useQuery(['me'])` calling `api.auth.me()`; returns `null` on
-  `401` (treats "not logged in" as data, not an error), rethrows other errors.
-- **`useRequireAuth()`** — builds on `useCurrentUser`; when resolved to `null`, redirects
-  to `/auth/login`. Returns the query so pages can render loading states.
-  **Used by:** `dashboard/page.tsx` and every future protected page.
-
-### 4.6 `components/app-shell.tsx` — `AppShell`
-Presentational layout: fixed sidebar nav (`NAV` array of links) + top header +
-scrollable content area. Wraps authenticated pages for consistent chrome.
-
-### 4.7 Pages
-- **`dashboard/page.tsx` — `DashboardPage`**: calls `useRequireAuth()` (guard + user) and
-  `useQuery(['health'])`. Shows a loading state until auth resolves, greets the user, and
-  renders an API-connectivity card from the health response.
-- **`auth/login/page.tsx` — `LoginPage`**: controlled email/password form; `useMutation`
-  → `api.auth.login`; on success invalidates `['me']` and routes to `/dashboard`; shows
-  server error text; disables the button while pending (prevents double submit).
-- **`auth/signup/page.tsx` — `SignupPage`**: same pattern for `api.auth.signup`.
+### Transactional services (highlights)
+- **FulfillmentService** — `allocate` locks inventory rows with `SELECT … FOR UPDATE`
+  (ordered) so concurrent orders can't over-reserve; creates reservations + allocations,
+  updates lines, opens backorders; `receive` is idempotent (unique `reference`) and
+  reprocesses backorders FIFO; `fulfill` consumes reservations and reduces on-hand.
+- **BillingService** — `generateFromQuotation` builds a GST invoice from a fulfilled deal
+  (FULFILLED → BILLING → INVOICED); `recordPayment` (PARTIALLY_PAID → PAID → deal
+  COMPLETED) with an overpayment guard.
 
 ---
 
-## 5. Request Flow Examples (end-to-end)
+## 6. Data model (current)
 
-**Login:**
-```text
-LoginPage form submit
-  → useMutation → api.auth.login(email,password) → apiFetch POST /api/auth/login (credentials: include)
-    → ValidationPipe validates LoginDto
-    → AuthController.login → AuthService.login (argon2.verify) → issueTokens → store hashed refresh
-    → setCookies(df_access, df_refresh)  ← Set-Cookie
-  → onSuccess: invalidate ['me'] → router.replace('/dashboard')
-```
+Migrations in order: `init_auth → domain_dashboards → approvals → fulfillment →
+inventory_checks → invoices_payments_inr → rbac`. Money columns are `Decimal` (serialize
+to JSON as strings; the web coerces with `Number()`).
 
-**Protected access:**
-```text
-DashboardPage → useRequireAuth → api.auth.me() → GET /api/auth/me (df_access cookie)
-  → JwtAuthGuard verifies token, sets req.user
-  → AuthController.me(@CurrentUser) → AuthService.me → safe user JSON
-  → 401 ⇒ useCurrentUser returns null ⇒ redirect /auth/login
-```
+**RBAC / auth:** `roles`(name unique), `permissions`(name unique),
+`role_permissions`(PK roleId+permissionId), `users`(email unique, roleId→roles, status,
+tokenVersion), `refresh_tokens`(tokenHash unique, revoked).
 
-**Token refresh (rotation):**
-```text
-POST /api/auth/refresh (df_refresh cookie)
-  → AuthService.refresh: verify JWT → check stored hash (not revoked/expired)
-  → revoke old token → issueTokens → setCookies (new pair)
-```
+**CRM / catalog:** `customers`(segment, contact…), `products`(sku unique, type,
+basePrice, taxRate=GST%, currency=INR, active), `app_settings`.
 
----
+**Deal:** `quotations`(number unique, customerId, salespersonId, status, subtotal/
+discountPct/discountTotal/taxTotal/total/marginPct), `quotation_lines`.
 
-## 6. Data Model (current)
+**Approvals:** `approval_requests`(quotationId, status, reason),
+`approval_steps`(level, role[string], status, approverId, comment, decidedAt).
 
-Prisma schema: `prisma/schema.prisma`. Migrations: `init_auth` → `domain_dashboards` →
-`approvals`. Money columns use `Decimal`; they serialize to JSON **as strings**, so the
-web coerces them with `Number()`.
+**Fulfillment:** `warehouses`(code unique, priority), `inventory`(unique productId+
+warehouseId, onHand, reserved; CHECK reserved≤onHand & non-negative),
+`fulfillments`(number unique, quotationId unique, status), `fulfillment_lines`(ordered/
+allocated/fulfilled/backordered qty; CHECK alloc+backorder≤ordered), `reservations`,
+`allocations`(source INITIAL|BACKORDER), `backorders`(remainingQty), `inventory_receipts`
+(reference unique).
 
-### 6.1 Tables
+**Billing:** `invoices`(number unique, status, subtotal/gstTotal/total/paidAmount,
+paymentTerms), `invoice_lines`(gstRate), `payments`(method UPI/NEFT/…).
 
-| Table | Purpose | Key columns / constraints |
-|-------|---------|---------------------------|
-| `users` | Accounts | `email` (unique), `passwordHash`, `role` (`UserRole`), `active` |
-| `refresh_tokens` | Session refresh with rotation/revocation | `tokenHash` (unique), `userId` → users, `expiresAt`, `revoked` |
-| `app_settings` | Key/value system settings (Admin) | `key` (unique), `value` |
-| `customers` | Customer accounts | `name`, `segment` (`CustomerSegment`), `contactName/Email/Phone`, `active` |
-| `products` | Sellable catalog | `sku` (unique), `name`, `category`, `type` (`ProductType`), `basePrice` `Decimal(12,2)`, `taxRate`, `active` |
-| `quotations` | **Deal core** (aggregate root) | `number` (unique), `customerId` → customers, `salespersonId` → users, `status` (`QuotationStatus`), `subtotal/discountTotal/taxTotal/total` `Decimal(14,2)`, `discountPct`, `marginPct`, `expiresAt`; indexes on `status`, `customerId` |
-| `quotation_lines` | Line items | `quotationId` → quotations (cascade), `productId` → products, `qty`, `unitPrice`, `discountPct`, `taxRate`, `lineTotal`; index `quotationId` |
-| `approval_requests` | Approval workflow per deal | `quotationId` → quotations (cascade), `status` (`ApprovalRequestStatus`), `reason`; indexes `quotationId`, `status` |
-| `approval_steps` | Ordered steps in a request | `requestId` → approval_requests (cascade), `level`, `role` (`UserRole`), `status` (`ApprovalStepStatus`), `approverId` → users, `comment`, `decidedAt`; index `requestId` |
-| `invoices` | Customer invoices | `number` (unique), `customerId` → customers, `quotationId` → quotations, `status` (`InvoiceStatus`), `issueDate/dueDate`, `total`, `paidAmount`; indexes `status`, `customerId`, `dueDate` |
-| `audit_events` | Append-only activity log | `actorId/actorName`, `entityType`, `entityId`, `action`, `message`, `createdAt`; indexes `(entityType, entityId)`, `createdAt` |
+**Audit:** `audit_events`(actor, entityType, entityId, action, message) — no FK
+(immutable log).
 
-### 6.2 Relationships
-
-```text
-User 1─N RefreshToken
-User 1─N Quotation (salesperson)      User 1─N ApprovalStep (approver)
-Customer 1─N Quotation                Customer 1─N Invoice
-Quotation 1─N QuotationLine ─N:1 Product
-Quotation 1─N ApprovalRequest 1─N ApprovalStep
-Quotation 1─N Invoice
-(any entity) → AuditEvent (soft reference by entityType/entityId, no FK)
-```
-
-Cascades: deleting a quotation removes its lines and approval requests (and their steps).
-`AuditEvent` intentionally has **no FK** — it is an immutable log that must survive entity
-changes.
-
-### 6.3 Enums
-
-Declared in `schema.prisma` and mirrored in `packages/shared/src/enums.ts` (single source
-of truth for DB + app):
-`UserRole`, `QuotationStatus`, `ApprovalRequestStatus`, `ApprovalStepStatus`,
-`FulfillmentStatus`, `ReservationStatus`, `BackorderStatus`, `AllocationSource`,
-`SubscriptionStatus`, `InvoiceStatus`, `ProductType`, `BillingFrequency`,
-`CustomerSegment`. (Fulfillment/subscription/billing enums are defined ahead of their
-modules.)
-
-### 6.4 Modules & routes added since Auth
-
-All routes are under `/api` and guarded by `JwtAuthGuard` unless noted.
-
-| Module | Routes | Notes |
-|--------|--------|-------|
-| Audit (`audit/`) | — (internal `AuditService.record/recent`) | `@Global`; writes activity events |
-| Customers (`customers/`) | `GET/POST /customers`, `GET /customers/:id` | audits create |
-| Products (`products/`) | `GET/POST /products`, `GET /products/:id` | audits create |
-| Quotations (`quotations/`) | `GET/POST /quotations`, `GET /quotations/:id`, `POST /quotations/:id/submit\|cancel\|revise` | `QuotationsService.create` computes pricing/margin; `DealStateMachine` guards transitions; `submit` delegates to Approvals via `forwardRef` |
-| Approvals (`approvals/`) | `GET /approvals`, `GET /approvals/:id`, `POST /approvals/:id/approve\|reject\|request-changes` | decision routes also use `RolesGuard` (`SALES_MANAGER/FINANCE/ADMIN`); `ApprovalRuleEngine.computeChain`; decisions drive quotation status |
-| Invoices (`invoices/`) | `GET /invoices`, `GET /invoices/:id` | read-only for now |
-| Analytics (`analytics/`) | `GET /dashboard/metrics`, `GET /deal-health` | `DashboardService.metrics` (KPIs/alerts/activity); `DealHealthService.overview` (anomalies) |
-
-**Key functions added:**
-- `DealStateMachine.canTransition/nextStates/assertTransition` — authoritative lifecycle
-  guard (`quotations/deal-state-machine.ts`).
-- `QuotationsService.transition/submit/cancel/revise` and `create` (line + header pricing,
-  margin from cost≈70% of base).
-- `ApprovalRuleEngine.computeChain(facts)` → `{ chain, reasons }` (auto-approve or ordered
-  approver roles).
-- `ApprovalsService.submitQuotation/createForQuotation/approve/reject/requestChanges` —
-  builds chains, advances steps, and transitions the quotation.
-- `DashboardService.metrics` and `DealHealthService.overview` — read-only aggregation over
-  live data (no independent copies).
-
-**Web pages added:** `/quotations`, `/quotations/:id`, `/approvals`, `/approvals/:id`,
-`/deal-health`; shared UI in `components/ui.tsx` (`StatTile`, `Badge`, `DealStatusBadge`,
-`LifecycleStepper`, `SectionCard`, `EmptyState`).
+Enums (`QuotationStatus`, `FulfillmentStatus`, `InvoiceStatus`, …) are declared in
+`schema.prisma` and mirrored in `packages/shared/src/enums.ts`. Roles/permissions are now
+**data** (tables), with typed name references in `packages/shared` (`UserRole`,
+`Permission`, `ROLE_PERMISSIONS`).
 
 ---
 
-## 7. Configuration & Environment
+## 7. Frontend — routes, functions, real-time
 
-`.env` (from `.env.example`) drives everything:
-- `DATABASE_URL` — Prisma → PostgreSQL (host port **5433** to avoid a native 5432 server).
-- `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` / `*_TTL` — token signing and lifetimes.
-- `API_PORT` (3001), `WEB_ORIGIN` (CORS), `NEXT_PUBLIC_API_URL` (web → api base URL).
+### Routes (App Router)
+`/` → redirect `/dashboard`; `/auth/login`, `/auth/signup`; `/dashboard`, `/deal-health`;
+`/quotations` + `/quotations/:id`; `/approvals` + `/approvals/:id`; `/fulfillment` +
+`/fulfillment/:id`; `/inventory`; `/invoices` + `/invoices/:id`; `/products`;
+`/customers`; `/admin/users`.
 
-`pnpm-workspace.yaml` lists workspaces and `allowBuilds` (Prisma/argon2 native builds).
+### Key client modules
+- **`lib/api.ts`** — `apiFetch<T>` (cookies + JSON, throws `ApiError`); grouped callers
+  `api.auth/products/quotations/approvals/fulfillment/inventory/invoices/customers/admin/
+  dashboard/dealHealth`.
+- **`lib/use-auth.ts`** — `useCurrentUser()` (`['me']` query; 401 → `null`),
+  `usePermissions()` (`can(permission)`, ADMIN passes), `useRequireAuth()` (redirects to
+  login when unauthenticated).
+- **`components/app-shell.tsx`** — sidebar filtered by permission, active-link highlight,
+  header with **user avatar/name/role + Logout**.
+- **`lib/format.ts`** — `inr()` (₹, en-IN), `formatDate/formatDateTime` (en-IN).
+
+### Real-time updates
+`app/providers.tsx` configures TanStack Query with `refetchOnWindowFocus`,
+`refetchOnMount`, a short `staleTime`, and a `refetchInterval`. After mutations, detail
+pages call `queryClient.invalidateQueries()` (broad) so an approval / allocation / payment
+made on one screen is reflected on the dashboards, lists, and deal-health promptly.
+
+### Auth navigation nuance
+Login/guard use `router.replace()` (not `push`), so the login page is not left in the
+back-history after signing in. Route protection is client-side (`useRequireAuth`); the
+backend remains the real authority (401/403 on every protected endpoint).
 
 ---
 
-## 8. Conventions
+## 8. Configuration & conventions
 
-- Controllers validate + translate HTTP only; services hold logic; engines (coming) are
-  pure. No business logic in the frontend.
-- Secrets never hashed-in-plaintext: passwords via argon2, refresh tokens stored as SHA-256.
-- Every protected route uses `JwtAuthGuard` (+ `RolesGuard` when role-restricted).
-- Shared enums/DTOs live in `@dealflow/shared` — never duplicated per app.
+- `.env` (from `.env.example`): `DATABASE_URL` (Docker 5433 now; local 5432 documented,
+  switch paused), `JWT_*`, `API_PORT`, `WEB_ORIGIN`, `NEXT_PUBLIC_API_URL`,
+  `ADMIN_EMAIL`/`ADMIN_PASSWORD` (seed admin bootstrap).
+- Passwords argon2-hashed; refresh tokens stored as SHA-256; no secrets in responses.
+- Controllers validate + guard; services hold logic; engines are pure.
+- Shared enums/permissions live in `@dealflow/shared` — never duplicated per app.
+- Seeded logins (password `password123`): `admin@` (ADMIN), `morgan@` (MANAGER),
+  `fiona@` (FINANCE), `sam@`/`uma@` (USER).
+
+---
+
+## 9. Known gaps / next steps
+
+1. **Resource ownership** — add `createdById` to quotations + an ownership check so
+   `DEAL_VIEW_OWN` truly means "own" (RBAC spec §9).
+2. **Role-specific dashboards** — per-role metrics (USER=my deals, MANAGER=approvals/team,
+   FINANCE=collections, ADMIN=full) once ownership exists.
+3. **Negotiation/customer portal, reporting, subscriptions, admin config UI.**
+4. **Local-Postgres host switch** (paused) and **fuller automated test coverage**.

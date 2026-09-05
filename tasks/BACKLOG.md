@@ -20,6 +20,13 @@ This file tracks planned, unstarted tasks for future work across the team.
 
 ---
 
+> **Live status:** many items below are already delivered — see `tasks/COMPLETED.md` for
+> what's done and `tasks/CURRENT.md` for in-progress/paused work. Done so far: foundation,
+> auth, **RBAC**, audit, customers, products, quotations+lifecycle, approvals, fulfillment/
+> allocation/backorders, billing/invoices/payments, dashboards, India (INR/GST) localization.
+> Remaining: resource ownership, role-specific dashboards, negotiation/portal, reporting,
+> subscriptions, admin config UI, hardening/tests, local-Postgres switch (paused).
+
 ## Backlog Items — DealFlow360
 
 > Full specifications (Build, Deps, Entities, APIs, UI, Rules, Acceptance, Edge cases) for
