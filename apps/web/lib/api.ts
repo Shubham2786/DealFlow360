@@ -76,6 +76,17 @@ export interface DashboardMetrics {
   generatedAt: string;
 }
 
+export interface ReportData {
+  revenue: { collected: number; outstanding: number; overdueAmount: number; overdueCount: number };
+  pipeline: { value: number; activeDeals: number };
+  deals: { total: number; completed: number; cancelled: number; conversionRate: number; byStatus: { status: string; count: number }[] };
+  approvals: { pending: number; avgTurnaroundDays: number };
+  fulfillment: { openBackorders: number };
+  discounts: { avgDiscountPct: number };
+  topCustomers: { customer: string; total: number }[];
+  generatedAt: string;
+}
+
 export interface DealHealthOverview {
   summary: { totalDeals: number; HEALTHY: number; WARNING: number; CRITICAL: number };
   anomalies: {
@@ -99,6 +110,7 @@ export const api = {
     metrics: () => apiFetch<DashboardMetrics>('/dashboard/metrics'),
   },
   dealHealth: () => apiFetch<DealHealthOverview>('/deal-health'),
+  reports: () => apiFetch<ReportData>('/reports'),
 
   auth: {
     login: (email: string, password: string) =>

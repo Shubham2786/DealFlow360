@@ -7,8 +7,8 @@ import type { ReactNode } from 'react';
 import { api } from '@/lib/api';
 import { useCurrentUser, usePermissions } from '@/lib/use-auth';
 
-// perm === undefined means visible to any authenticated user.
-const NAV: { href: string; label: string; perm?: string }[] = [
+// perm/anyOf undefined means visible to any authenticated user.
+const NAV: { href: string; label: string; perm?: string; anyOf?: string[] }[] = [
   { href: '/dashboard', label: 'Dashboard' },
   { href: '/quotations', label: 'Quotations' },
   { href: '/approvals', label: 'Approvals', perm: 'DEAL_APPROVE' },
@@ -16,6 +16,7 @@ const NAV: { href: string; label: string; perm?: string }[] = [
   { href: '/inventory', label: 'Inventory', perm: 'TASK_ALLOCATE' },
   { href: '/invoices', label: 'Invoices', perm: 'FINANCE_DATA_VIEW' },
   { href: '/deal-health', label: 'Deal Health' },
+  { href: '/reports', label: 'Reports', anyOf: ['TEAM_VIEW', 'FINANCE_REPORT_GENERATE'] },
   { href: '/customers', label: 'Customers' },
   { href: '/products', label: 'Products' },
   { href: '/admin/users', label: 'Users', perm: 'USER_MANAGE' },
@@ -32,7 +33,10 @@ export function AppShell({ children }: { children: ReactNode }) {
   const qc = useQueryClient();
   const me = useCurrentUser();
   const { can } = usePermissions();
-  const nav = NAV.filter((item) => !item.perm || can(item.perm));
+  const nav = NAV.filter(
+    (item) =>
+      (!item.perm || can(item.perm)) && (!item.anyOf || item.anyOf.some((p) => can(p))),
+  );
 
   const logout = useMutation({
     mutationFn: () => api.auth.logout(),

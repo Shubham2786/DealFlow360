@@ -3,10 +3,11 @@ import { AuthModule } from '../auth/auth.module';
 import { AnalyticsController } from './analytics.controller';
 import { DashboardService } from './dashboard.service';
 import { DealHealthService } from './deal-health.service';
+import { ReportingService } from './reporting.service';
 
 @Module({
   imports: [AuthModule],
   controllers: [AnalyticsController],
-  providers: [DashboardService, DealHealthService],
+  providers: [DashboardService, DealHealthService, ReportingService],
 })
-export class AnalyticsModule {}
+export class AnalyticsModule { }
