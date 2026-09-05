@@ -1,0 +1,74 @@
+import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import {
+  IsBoolean,
+  IsEnum,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Min,
+  MinLength,
+} from 'class-validator';
+import { ProductType } from '@dealflow/shared';
+import { PrismaService } from '../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { CurrentUser, type AuthUser } from '../auth/decorators/current-user.decorator';
+
+class CreateProductDto {
+  @IsString() @MinLength(1) sku!: string;
+  @IsString() @MinLength(1) name!: string;
+  @IsOptional() @IsString() description?: string;
+  @IsOptional() @IsString() category?: string;
+  @IsOptional() @IsEnum(ProductType) type?: ProductType;
+  @IsNumber() @Min(0) basePrice!: number;
+  @IsOptional() @IsString() currency?: string;
+  @IsOptional() @IsString() uom?: string;
+  @IsOptional() @IsNumber() @Min(0) taxRate?: number;
+  @IsOptional() @IsBoolean() active?: boolean;
+}
+
+@Controller('products')
+@UseGuards(JwtAuthGuard)
+export class ProductsController {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+  ) {}
+
+  @Get()
+  list() {
+    return this.prisma.product.findMany({ orderBy: { createdAt: 'desc' } });
+  }
+
+  @Get(':id')
+  get(@Param('id') id: string) {
+    return this.prisma.product.findUnique({ where: { id } });
+  }
+
+  @Post()
+  async create(@Body() dto: CreateProductDto, @CurrentUser() user: AuthUser) {
+    const product = await this.prisma.product.create({
+      data: {
+        sku: dto.sku,
+        name: dto.name,
+        description: dto.description,
+        category: dto.category,
+        type: dto.type ?? ProductType.ONE_TIME,
+        basePrice: dto.basePrice,
+        currency: dto.currency ?? 'USD',
+        uom: dto.uom ?? 'unit',
+        taxRate: dto.taxRate ?? 0,
+        active: dto.active ?? true,
+      },
+    });
+    await this.audit.record({
+      actorId: user.id,
+      actorName: user.name,
+      entityType: 'Product',
+      entityId: product.id,
+      action: 'PRODUCT_CREATED',
+      message: `Product ${product.sku} created`,
+    });
+    return product;
+  }
+}

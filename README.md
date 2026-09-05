@@ -41,6 +41,30 @@ pnpm dev:api           # start NestJS API (http://localhost:3001/api)
 pnpm dev:web           # start Next.js web (http://localhost:3000)
 ```
 
+## Demo (two dashboards)
+
+After `pnpm db:up`, `pnpm prisma:migrate`, and `pnpm prisma:seed`, start both apps:
+
+```bash
+pnpm dev:api   # http://localhost:3001/api
+pnpm dev:web   # http://localhost:3000
+```
+
+Sign in at `/auth/login` with a seeded account:
+
+| Email | Password | Role |
+|-------|----------|------|
+| admin@dealflow.test | password123 | ADMIN |
+| morgan@dealflow.test | password123 | SALES_MANAGER |
+| sam@dealflow.test | password123 | SALESPERSON |
+
+Two working, data-backed dashboards:
+- **Sales Dashboard** (`/dashboard`) — KPIs (active deals, approvals, revenue, pipeline,
+  overdue invoices), alerts, and a recent-activity feed, all aggregated from the database.
+- **Deal Health & Anomalies** (`/deal-health`) — health summary plus derived anomalies
+  (excessive discount, low margin, stuck approvals, nearing expiry, overdue invoices) with
+  severity and drill-down links.
+
 ## Build Approach
 
 The application is built module by module following `tasks.md` (Phases 1–10). Each module

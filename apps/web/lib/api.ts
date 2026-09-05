@@ -54,8 +54,48 @@ export interface CurrentUser {
   createdAt: string;
 }
 
+export interface DashboardMetrics {
+  kpis: {
+    activeDeals: number;
+    draftQuotations: number;
+    pendingApprovals: number;
+    approvedDeals: number;
+    awaitingFulfillment: number;
+    outstandingInvoices: number;
+    overdueInvoices: number;
+    totalCustomers: number;
+    totalProducts: number;
+    revenue: number;
+    pipelineValue: number;
+  };
+  alerts: { severity: string; label: string; href: string }[];
+  recentActivity: { id: string; action: string; message: string | null; actor: string | null; at: string }[];
+  generatedAt: string;
+}
+
+export interface DealHealthOverview {
+  summary: { totalDeals: number; HEALTHY: number; WARNING: number; CRITICAL: number };
+  anomalies: {
+    dealId: string;
+    dealRef: string;
+    customer: string;
+    type: string;
+    severity: 'WARNING' | 'CRITICAL';
+    detectedAt: string;
+    explanation: string;
+    recommendedAction: string;
+    drilldown: string;
+  }[];
+  generatedAt: string;
+}
+
 export const api = {
   health: () => apiFetch<HealthResponse>('/health'),
+
+  dashboard: {
+    metrics: () => apiFetch<DashboardMetrics>('/dashboard/metrics'),
+  },
+  dealHealth: () => apiFetch<DealHealthOverview>('/deal-health'),
 
   auth: {
     login: (email: string, password: string) =>
