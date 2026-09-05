@@ -37,7 +37,7 @@ export class QuotationsController {
   constructor(
     private readonly quotations: QuotationsService,
     private readonly audit: AuditService,
-  ) {}
+  ) { }
 
   @Get()
   list() {
@@ -64,5 +64,20 @@ export class QuotationsController {
       message: `Quotation ${quotation.number} created`,
     });
     return quotation;
+  }
+
+  @Post(':id/submit')
+  submit(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.quotations.submit(id, user);
+  }
+
+  @Post(':id/cancel')
+  cancel(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.quotations.cancel(id, user);
+  }
+
+  @Post(':id/revise')
+  revise(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.quotations.revise(id, user);
   }
 }

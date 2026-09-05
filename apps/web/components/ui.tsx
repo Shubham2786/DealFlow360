@@ -61,3 +61,70 @@ export function SectionCard({ title, children }: { title: string; children: Reac
 export function EmptyState({ message }: { message: string }) {
   return <p className="py-6 text-center text-sm text-slate-400">{message}</p>;
 }
+
+const STATUS_KIND: Record<string, string> = {
+  DRAFT: 'info',
+  SUBMITTED: 'info',
+  PENDING_APPROVAL: 'warning',
+  CHANGES_REQUESTED: 'warning',
+  NEGOTIATION: 'warning',
+  APPROVED: 'success',
+  REJECTED: 'critical',
+  CONVERTED_TO_FULFILLMENT: 'info',
+  FULFILLING: 'info',
+  PARTIALLY_FULFILLED: 'warning',
+  FULFILLED: 'success',
+  BILLING: 'info',
+  INVOICED: 'info',
+  PAID: 'success',
+  COMPLETED: 'success',
+  CANCELLED: 'critical',
+};
+
+export function DealStatusBadge({ status }: { status: string }) {
+  return <Badge kind={STATUS_KIND[status] ?? 'info'}>{status.replaceAll('_', ' ')}</Badge>;
+}
+
+/** Simplified lifecycle stepper for the main happy path. */
+const LIFECYCLE = [
+  'DRAFT',
+  'PENDING_APPROVAL',
+  'APPROVED',
+  'FULFILLING',
+  'BILLING',
+  'INVOICED',
+  'PAID',
+  'COMPLETED',
+];
+
+export function LifecycleStepper({ status }: { status: string }) {
+  const current = LIFECYCLE.indexOf(status);
+  const cancelled = status === 'CANCELLED';
+  return (
+    <div className="flex flex-wrap items-center gap-1">
+      {LIFECYCLE.map((step, i) => {
+        const done = !cancelled && current >= 0 && i <= current;
+        const isCurrent = !cancelled && i === current;
+        return (
+          <span
+            key={step}
+            className={`rounded px-2 py-0.5 text-xs font-medium ${
+              isCurrent
+                ? 'bg-brand-600 text-white'
+                : done
+                  ? 'bg-brand-100 text-brand-700'
+                  : 'bg-slate-100 text-slate-400'
+            }`}
+          >
+            {step.replaceAll('_', ' ')}
+          </span>
+        );
+      })}
+      {cancelled && (
+        <span className="rounded bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
+          CANCELLED
+        </span>
+      )}
+    </div>
+  );
+}

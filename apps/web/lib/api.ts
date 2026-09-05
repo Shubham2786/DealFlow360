@@ -111,4 +111,42 @@ export const api = {
     logout: () => apiFetch<{ ok: boolean }>('/auth/logout', { method: 'POST' }),
     me: () => apiFetch<CurrentUser>('/auth/me'),
   },
+
+  quotations: {
+    list: () => apiFetch<QuotationListItem[]>('/quotations'),
+    get: (id: string) => apiFetch<QuotationDetail>(`/quotations/${id}`),
+    submit: (id: string) => apiFetch(`/quotations/${id}/submit`, { method: 'POST' }),
+    cancel: (id: string) => apiFetch(`/quotations/${id}/cancel`, { method: 'POST' }),
+    revise: (id: string) => apiFetch(`/quotations/${id}/revise`, { method: 'POST' }),
+  },
 };
+
+export interface QuotationListItem {
+  id: string;
+  number: string;
+  status: string;
+  total: string;
+  discountPct: string;
+  marginPct: string;
+  createdAt: string;
+  expiresAt: string | null;
+  customer: { id: string; name: string } | null;
+  salesperson: { id: string; name: string } | null;
+}
+
+export interface QuotationDetail extends QuotationListItem {
+  subtotal: string;
+  discountTotal: string;
+  taxTotal: string;
+  customer: { id: string; name: string; segment: string; contactName: string | null; contactEmail: string | null } | null;
+  lines: {
+    id: string;
+    qty: number;
+    unitPrice: string;
+    discountPct: string;
+    taxRate: string;
+    lineTotal: string;
+    product: { id: string; sku: string; name: string };
+  }[];
+  invoices: { id: string; number: string; status: string; total: string }[];
+}

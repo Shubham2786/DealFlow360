@@ -1,5 +1,8 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { QuotationStatus } from '@dealflow/shared';
 import { PrismaService } from '../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
+import { DealStateMachine } from './deal-state-machine';
 
 export interface QuotationLineInput {
   productId: string;
@@ -18,7 +21,52 @@ export interface CreateQuotationInput {
 
 @Injectable()
 export class QuotationsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly stateMachine: DealStateMachine,
+    private readonly audit: AuditService,
+  ) { }
+
+  /** Validates and applies a lifecycle transition, recording an audit event. */
+  async transition(
+    id: string,
+    to: QuotationStatus,
+    actor: { id?: string; name?: string },
+    action: string,
+  ) {
+    const quotation = await this.prisma.quotation.findUnique({ where: { id } });
+    if (!quotation) throw new NotFoundException(`Quotation ${id} not found`);
+
+    this.stateMachine.assertTransition(quotation.status as QuotationStatus, to);
+
+    const updated = await this.prisma.quotation.update({
+      where: { id },
+      data: { status: to },
+    });
+    await this.audit.record({
+      actorId: actor.id,
+      actorName: actor.name,
+      entityType: 'Quotation',
+      entityId: id,
+      action,
+      message: `${quotation.number}: ${quotation.status} → ${to}`,
+    });
+    return updated;
+  }
+
+  submit(id: string, actor: { id?: string; name?: string }) {
+    // Submitting routes the deal to approval; the Approvals module will attach the
+    // required approval chain on top of this transition.
+    return this.transition(id, QuotationStatus.PENDING_APPROVAL, actor, 'QUOTATION_SUBMITTED');
+  }
+
+  cancel(id: string, actor: { id?: string; name?: string }) {
+    return this.transition(id, QuotationStatus.CANCELLED, actor, 'QUOTATION_CANCELLED');
+  }
+
+  revise(id: string, actor: { id?: string; name?: string }) {
+    return this.transition(id, QuotationStatus.DRAFT, actor, 'QUOTATION_REVISED');
+  }
 
   list() {
     return this.prisma.quotation.findMany({
