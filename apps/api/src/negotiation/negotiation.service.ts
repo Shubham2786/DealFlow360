@@ -109,11 +109,13 @@ export class NegotiationService {
         discountPct: l.discountPct,
         lineTotal: l.lineTotal,
       })),
-      subtotal: quote.subtotal,
-      discountPct: quote.discountPct,
-      discountTotal: quote.discountTotal,
-      taxTotal: quote.taxTotal,
-      total: quote.total,
+      subtotal: Number(quote.subtotal),
+      discountPct: Number(quote.discountPct),
+      discountTotal: Number(quote.discountTotal) > 0 ? Number(quote.discountTotal) : (Number(quote.subtotal) * (Number(quote.discountPct) / 100)),
+      taxTotal: Number(quote.taxTotal),
+      total: Number(quote.total) > 0 && Math.abs(Number(quote.total) - (Number(quote.subtotal) - (Number(quote.discountTotal) || (Number(quote.subtotal) * Number(quote.discountPct) / 100)))) < 1
+        ? Number(quote.total)
+        : Number(quote.subtotal) - (Number(quote.discountTotal) || (Number(quote.subtotal) * Number(quote.discountPct) / 100)) + Number(quote.taxTotal),
       messages: (quote.negotiation?.messages ?? []).map((m) => ({
         author: m.author,
         body: m.body,
@@ -136,6 +138,10 @@ export class NegotiationService {
 
     if (['ACCEPTED', 'REJECTED'].includes(pt.negotiation.status)) {
       throw new BadRequestException(`This proposal has already been ${pt.negotiation.status.toLowerCase()}`);
+    }
+
+    if (action === 'accept' && quote.expiresAt && new Date(quote.expiresAt).getTime() < Date.now()) {
+      throw new BadRequestException('This proposal has expired. Please contact your sales representative for a revised quotation.');
     }
 
     if (requestedDiscountPct !== undefined && requestedDiscountPct !== null) {
@@ -182,5 +188,39 @@ export class NegotiationService {
     await this.prisma.negotiation.update({ where: { id: negotiationId }, data: { status: 'REJECTED' } });
     await this.audit.record({ entityType: 'Quotation', entityId: quotationId, actorName: 'Customer', action: 'CUSTOMER_REJECTED', message: `${quote.number}: customer rejected the proposal` });
     return { ok: true, status: 'REJECTED' };
+  }
+
+  async replyAsSalesperson(quotationId: string, body: string, user: { id?: string; name?: string }) {
+    if (!body || !body.trim()) {
+      throw new BadRequestException('Message body cannot be empty');
+    }
+    const negotiation = await this.prisma.negotiation.findUnique({
+      where: { quotationId },
+    });
+    if (!negotiation) throw new NotFoundException('Negotiation thread not found for quotation');
+
+    const msg = await this.prisma.negotiationMessage.create({
+      data: {
+        negotiationId: negotiation.id,
+        author: user.name ?? 'Sales Representative',
+        body: body.trim(),
+      },
+    });
+
+    await this.prisma.negotiation.update({
+      where: { id: negotiation.id },
+      data: { status: 'REPRESENTATIVE_RESPONDED' },
+    });
+
+    await this.audit.record({
+      actorId: user.id,
+      actorName: user.name,
+      entityType: 'Quotation',
+      entityId: quotationId,
+      action: 'NEGOTIATION_REPLIED',
+      message: `Salesperson responded: "${body.slice(0, 50)}"`,
+    });
+
+    return msg;
   }
 }

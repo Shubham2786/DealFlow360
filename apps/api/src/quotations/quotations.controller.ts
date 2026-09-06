@@ -1,4 +1,4 @@
-import { Body, Controller, forwardRef, Get, Inject, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, forwardRef, Get, Inject, Param, Post, UseGuards } from '@nestjs/common';
 import {
   IsArray,
   IsInt,
@@ -10,9 +10,8 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
-import { Permission } from '@dealflow/shared';
+import { Permission, UserRole } from '@dealflow/shared';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
@@ -36,6 +35,22 @@ class CreateQuotationDto {
   lines!: QuotationLineDto[];
 }
 
+class CustomerOrderLineDto {
+  @IsString() productId!: string;
+  @IsInt() @Min(1) qty!: number;
+}
+
+class CustomerOrderDto {
+  @IsArray() @ValidateNested({ each: true }) @Type(() => CustomerOrderLineDto)
+  lines!: CustomerOrderLineDto[];
+  @IsOptional() @IsString() notes?: string;
+}
+
+class ApplyCounterDiscountDto {
+  @IsNumber() @Min(0) @Max(100) discountPct!: number;
+  @IsOptional() @IsString() message?: string;
+}
+
 @Controller('quotations')
 @UseGuards(JwtAuthGuard)
 export class QuotationsController {
@@ -54,6 +69,13 @@ export class QuotationsController {
   @Get(':id')
   get(@Param('id') id: string, @CurrentUser() user: AuthUser) {
     return this.quotations.get(id, user);
+  }
+
+  @Post('preview')
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions(Permission.DEAL_CREATE)
+  preview(@Body() dto: CreateQuotationDto) {
+    return this.quotations.preview(dto);
   }
 
   @Post()
@@ -76,19 +98,55 @@ export class QuotationsController {
     return quotation;
   }
 
+  @Post('customer-order')
+  async createCustomerOrder(
+    @Body() dto: CustomerOrderDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    if (user.role !== UserRole.CUSTOMER) {
+      throw new ForbiddenException('Only customer accounts can place self-service order requests');
+    }
+    return this.quotations.createCustomerOrder(dto, user);
+  }
+
   @Post(':id/submit')
-  submit(@Param('id') id: string, @CurrentUser() user: AuthUser) {
-    // Submit routes the deal to approval and builds the required approval chain.
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions(Permission.DEAL_CREATE)
+  async submit(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    const quote = await this.quotations.get(id, user);
+    this.quotations.assertCanModify(quote, user);
     return this.approvals.submitQuotation(id, user);
   }
 
   @Post(':id/cancel')
-  cancel(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions(Permission.DEAL_CREATE)
+  async cancel(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    const quote = await this.quotations.get(id, user);
+    this.quotations.assertCanModify(quote, user);
     return this.quotations.cancel(id, user);
   }
 
   @Post(':id/revise')
-  revise(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions(Permission.DEAL_CREATE)
+  async revise(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    const quote = await this.quotations.get(id, user);
+    this.quotations.assertCanModify(quote, user);
     return this.quotations.revise(id, user);
+  }
+
+  @Post(':id/apply-counter-discount')
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions(Permission.DEAL_CREATE)
+  async applyCounterDiscount(
+    @Param('id') id: string,
+    @Body() dto: ApplyCounterDiscountDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    const quote = await this.quotations.get(id, user);
+    this.quotations.assertCanModify(quote, user);
+    await this.quotations.applyDiscount(id, dto.discountPct, user);
+    return this.approvals.submitQuotation(id, user);
   }
 }

@@ -1,9 +1,11 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AppShell } from '@/components/app-shell';
 import { Badge, EmptyState, SectionCard } from '@/components/ui';
+import { useToast } from '@/components/toast';
 import { api, type SubscriptionItem } from '@/lib/api';
 import { inr, formatDate } from '@/lib/format';
 import { useRequireAuth } from '@/lib/use-auth';
@@ -19,6 +21,7 @@ const SSTATUS: Record<string, string> = {
 export default function SubscriptionsPage() {
   const auth = useRequireAuth();
   const qc = useQueryClient();
+  const toast = useToast();
   const subscriptions = useQuery({
     queryKey: ['subscriptions'],
     queryFn: api.subscriptions.list,
@@ -30,17 +33,35 @@ export default function SubscriptionsPage() {
 
   const pause = useMutation({
     mutationFn: (id: string) => api.subscriptions.pause(id),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      invalidate();
+      toast.success('Subscription paused successfully');
+    },
+    onError: (err: any) => {
+      toast.error(err.message || 'Failed to pause subscription');
+    },
   });
 
   const resume = useMutation({
     mutationFn: (id: string) => api.subscriptions.resume(id),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      invalidate();
+      toast.success('Subscription resumed successfully');
+    },
+    onError: (err: any) => {
+      toast.error(err.message || 'Failed to resume subscription');
+    },
   });
 
   const cancel = useMutation({
     mutationFn: (id: string) => api.subscriptions.cancel(id),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      invalidate();
+      toast.success('Subscription cancelled successfully');
+    },
+    onError: (err: any) => {
+      toast.error(err.message || 'Failed to cancel subscription');
+    },
   });
 
   if (auth.isLoading || auth.data === null) {
@@ -49,31 +70,40 @@ export default function SubscriptionsPage() {
 
   const allRows = subscriptions.data ?? [];
   const rows = filter === 'ALL' ? allRows : allRows.filter((s) => s.status === filter);
+  const isPending = pause.isPending || resume.isPending || cancel.isPending;
 
   return (
     <AppShell>
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900">Subscriptions</h1>
-            <p className="text-sm text-slate-500">
-              Recurring service agreements, maintenance plans and annual contracts.
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            {['ALL', 'ACTIVE', 'PAUSED', 'CANCELLED'].map((f) => (
-              <button
-                key={f}
-                onClick={() => setFilter(f)}
-                className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
-                  filter === f
-                    ? 'bg-brand-600 text-white'
-                    : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
-                }`}
-              >
-                {f}
-              </button>
-            ))}
+        <div>
+          <Link
+            href="/dashboard"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-brand-700 hover:text-brand-900 bg-brand-50 hover:bg-brand-100 border border-brand-200 rounded-lg px-3 py-1.5 transition mb-3"
+          >
+            ← Back to Dashboard
+          </Link>
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-bold text-slate-900">Subscriptions</h1>
+              <p className="text-sm text-slate-500">
+                Recurring service agreements, maintenance plans and annual contracts.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              {['ALL', 'ACTIVE', 'PAUSED', 'CANCELLED'].map((f) => (
+                <button
+                  key={f}
+                  onClick={() => setFilter(f)}
+                  className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
+                    filter === f
+                      ? 'bg-brand-600 text-white'
+                      : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  {f}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -133,19 +163,19 @@ export default function SubscriptionsPage() {
                           {s.status === 'ACTIVE' && (
                             <button
                               onClick={() => pause.mutate(s.id)}
-                              disabled={pause.isPending}
-                              className="rounded border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+                              disabled={isPending}
+                              className="rounded border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-800 hover:bg-amber-100 disabled:opacity-50 transition"
                             >
-                              Pause
+                              {pause.isPending ? 'Pausing…' : 'Pause'}
                             </button>
                           )}
                           {s.status === 'PAUSED' && (
                             <button
                               onClick={() => resume.mutate(s.id)}
-                              disabled={resume.isPending}
-                              className="rounded border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
+                              disabled={isPending}
+                              className="rounded border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-800 hover:bg-emerald-100 disabled:opacity-50 transition"
                             >
-                              Resume
+                              {resume.isPending ? 'Resuming…' : 'Resume'}
                             </button>
                           )}
                           {s.status !== 'CANCELLED' && (
@@ -155,10 +185,10 @@ export default function SubscriptionsPage() {
                                   cancel.mutate(s.id);
                                 }
                               }}
-                              disabled={cancel.isPending}
-                              className="rounded border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-red-50 hover:text-red-700 disabled:opacity-50"
+                              disabled={isPending}
+                              className="rounded border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-red-50 hover:text-red-700 disabled:opacity-50 transition"
                             >
-                              Cancel
+                              {cancel.isPending ? 'Cancelling…' : 'Cancel'}
                             </button>
                           )}
                         </div>

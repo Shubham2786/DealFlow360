@@ -13,6 +13,7 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:seed": "prisma db seed",
+    "dev": "pnpm --filter @dealflow/api --filter @dealflow/web --parallel dev",
     "dev:api": "pnpm --filter @dealflow/api start:dev",
     "dev:web": "pnpm --filter @dealflow/web dev",
     "build": "pnpm -r build",

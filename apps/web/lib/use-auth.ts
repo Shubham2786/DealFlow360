@@ -18,6 +18,7 @@ export function useCurrentUser() {
       }
     },
     retry: false,
+    staleTime: 60_000,
   });
 }
 
@@ -39,10 +40,10 @@ export function useRequireAuth() {
   const query = useCurrentUser();
 
   useEffect(() => {
-    if (!query.isLoading && query.data === null) {
+    if (!query.isLoading && !query.isFetching && query.data === null) {
       router.replace('/auth/login');
     }
-  }, [query.isLoading, query.data, router]);
+  }, [query.isLoading, query.isFetching, query.data, router]);
 
   return query;
 }

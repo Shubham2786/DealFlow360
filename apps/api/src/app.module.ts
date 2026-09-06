@@ -15,10 +15,12 @@ import { InvoicesModule } from './invoices/invoices.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
+import { AppConfigModule } from './config/config.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    AppConfigModule,
     PrismaModule,
     AuditModule,
     AuthModule,

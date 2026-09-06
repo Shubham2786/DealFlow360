@@ -14,11 +14,11 @@ export default function InventoryPage() {
   const warehouses = useQuery({ queryKey: ['warehouses'], queryFn: api.inventory.warehouses });
   const products = useQuery({ queryKey: ['products'], queryFn: api.products.list });
 
-  const [form, setForm] = useState({ warehouseId: '', productId: '', quantity: 10, reference: '' });
+  const [form, setForm] = useState({ warehouseId: '', productId: '', quantity: 10 });
   const [msg, setMsg] = useState('');
 
   const receive = useMutation({
-    mutationFn: () => api.inventory.receive({ ...form, quantity: Number(form.quantity) }),
+    mutationFn: () => api.inventory.receive({ warehouseId: form.warehouseId, productId: form.productId, quantity: Number(form.quantity) }),
     onSuccess: async (r: unknown) => {
       const res = r as { idempotent?: boolean; backordersFulfilled?: number };
       setMsg(
@@ -110,10 +110,7 @@ export default function InventoryPage() {
                   <span className="mb-1 block font-medium text-slate-600">Quantity</span>
                   <input type="number" min={1} required value={form.quantity} onChange={(e) => setForm({ ...form, quantity: Number(e.target.value) })} className="w-full rounded-md border border-slate-300 px-2 py-1.5" />
                 </label>
-                <label className="block">
-                  <span className="mb-1 block font-medium text-slate-600">Reference (idempotency key)</span>
-                  <input required value={form.reference} onChange={(e) => setForm({ ...form, reference: e.target.value })} placeholder="e.g. PO-12345" className="w-full rounded-md border border-slate-300 px-2 py-1.5" />
-                </label>
+
                 {receive.isError && <p className="text-red-600">{(receive.error as Error).message}</p>}
                 {msg && <p className="text-green-700">{msg}</p>}
                 <button type="submit" disabled={receive.isPending} className="w-full rounded-md bg-brand-600 px-3 py-2 font-medium text-white hover:bg-brand-700 disabled:opacity-60">

@@ -35,6 +35,22 @@ export class AuthService {
   private accessTtl = Number(process.env.JWT_ACCESS_TTL ?? 900);
   private refreshTtl = Number(process.env.JWT_REFRESH_TTL ?? 604800);
 
+  private getAccessSecret(): string {
+    const secret = process.env.JWT_ACCESS_SECRET;
+    if (!secret || !secret.trim()) {
+      throw new InternalServerErrorException('JWT_ACCESS_SECRET is not configured');
+    }
+    return secret;
+  }
+
+  private getRefreshSecret(): string {
+    const secret = process.env.JWT_REFRESH_SECRET;
+    if (!secret || !secret.trim()) {
+      throw new InternalServerErrorException('JWT_REFRESH_SECRET is not configured');
+    }
+    return secret;
+  }
+
   private sha256(value: string): string {
     return createHash('sha256').update(value).digest('hex');
   }
@@ -49,13 +65,13 @@ export class AuthService {
       tokenVersion: user.tokenVersion,
     };
     const accessToken = this.jwt.sign(payload, {
-      secret: process.env.JWT_ACCESS_SECRET,
+      secret: this.getAccessSecret(),
       expiresIn: this.accessTtl,
     });
     const jti = randomUUID();
     const refreshToken = this.jwt.sign(
       { sub: user.id, jti },
-      { secret: process.env.JWT_REFRESH_SECRET, expiresIn: this.refreshTtl },
+      { secret: this.getRefreshSecret(), expiresIn: this.refreshTtl },
     );
 
     await this.prisma.refreshToken.create({
@@ -95,17 +111,28 @@ export class AuthService {
     return this.issueTokens(user);
   }
 
-  async login(dto: LoginDto): Promise<TokenPair> {
+  async login(dto: LoginDto): Promise<{ tokens: TokenPair; user: any }> {
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
-      include: { role: true },
+      include: { role: { include: { permissions: { include: { permission: true } } } } },
     });
     if (!user || user.status !== 'ACTIVE') throw new UnauthorizedException('Invalid credentials');
 
     const valid = await argon2.verify(user.passwordHash, dto.password);
     if (!valid) throw new UnauthorizedException('Invalid credentials');
 
-    return this.issueTokens(user);
+    const tokens = await this.issueTokens(user);
+    const userPayload = {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role.name,
+      permissions: user.role.permissions.map((rp) => rp.permission.name),
+      status: user.status,
+      createdAt: user.createdAt,
+    };
+
+    return { tokens, user: userPayload };
   }
 
   async refresh(refreshToken: string | undefined): Promise<TokenPair> {
@@ -113,15 +140,24 @@ export class AuthService {
 
     let payload: { sub: string };
     try {
-      payload = this.jwt.verify(refreshToken, { secret: process.env.JWT_REFRESH_SECRET });
+      payload = this.jwt.verify(refreshToken, { secret: this.getRefreshSecret() });
     } catch {
       throw new UnauthorizedException('Invalid refresh token');
     }
 
     const hash = this.sha256(refreshToken);
     const stored = await this.prisma.refreshToken.findUnique({ where: { tokenHash: hash } });
-    if (!stored || stored.revoked || stored.expiresAt < new Date()) {
+    if (!stored || stored.expiresAt < new Date()) {
       throw new UnauthorizedException('Refresh token no longer valid');
+    }
+    if (stored.revoked) {
+      // Replay attack detected: an already-revoked refresh token was re-presented.
+      // Revoke all active refresh tokens for this user account to protect against token compromise.
+      await this.prisma.refreshToken.updateMany({
+        where: { userId: stored.userId },
+        data: { revoked: true },
+      });
+      throw new UnauthorizedException('Compromised refresh token reuse detected; session revoked');
     }
 
     await this.prisma.refreshToken.update({ where: { id: stored.id }, data: { revoked: true } });

@@ -28,9 +28,14 @@ export class JwtAuthGuard implements CanActivate {
     const token = this.extract(req);
     if (!token) throw new UnauthorizedException('Not authenticated');
 
+    const secret = process.env.JWT_ACCESS_SECRET;
+    if (!secret || !secret.trim()) {
+      throw new UnauthorizedException('Authentication secret not configured');
+    }
+
     let payload: { sub: string; tokenVersion?: number };
     try {
-      payload = this.jwt.verify(token, { secret: process.env.JWT_ACCESS_SECRET });
+      payload = this.jwt.verify(token, { secret });
     } catch {
       throw new UnauthorizedException('Invalid or expired session');
     }

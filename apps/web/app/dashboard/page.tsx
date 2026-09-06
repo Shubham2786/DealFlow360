@@ -54,12 +54,20 @@ export default function DashboardPage() {
               Deal Health →
             </Link>
           ) : (
-            data?.customer?.accountManager && (
-              <div className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-right text-xs">
-                <span className="text-slate-400">Dedicated Account Manager</span>
-                <div className="font-semibold text-slate-800">{data.customer.accountManager.name}</div>
-              </div>
-            )
+            <div className="flex items-center gap-3">
+              <Link
+                href="/products"
+                className="inline-flex items-center rounded-md bg-brand-600 px-3.5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-700 transition"
+              >
+                + Place New Order
+              </Link>
+              {data?.customer?.accountManager && (
+                <div className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-right text-xs">
+                  <span className="text-slate-400">Dedicated Account Manager</span>
+                  <div className="font-semibold text-slate-800">{data.customer.accountManager.name}</div>
+                </div>
+              )}
+            </div>
           )}
         </div>
 

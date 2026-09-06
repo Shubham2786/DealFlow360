@@ -1,8 +1,10 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { InvoiceStatus, QuotationStatus, UserRole } from '@dealflow/shared';
+import { InvoiceStatus, Permission, QuotationStatus, UserRole } from '@dealflow/shared';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { DealStateMachine } from '../quotations/deal-state-machine';
+import { AppSettingsService } from '../config/app-settings.service';
 
 type Actor = { id?: string; name?: string };
 
@@ -19,14 +21,32 @@ export class BillingService {
     private readonly prisma: PrismaService,
     private readonly stateMachine: DealStateMachine,
     private readonly audit: AuditService,
+    private readonly appSettings: AppSettingsService,
   ) {}
 
   list(viewer?: InvoiceViewer) {
     const isCustomer = viewer?.role === UserRole.CUSTOMER;
+    const isTeamOrFinance =
+      viewer?.role === UserRole.ADMIN ||
+      viewer?.role === UserRole.FINANCE ||
+      (viewer?.permissions ?? []).includes(Permission.FINANCE_DATA_VIEW) ||
+      (viewer?.permissions ?? []).includes(Permission.DEAL_VIEW_TEAM);
+
+    let whereClause: Prisma.InvoiceWhereInput | undefined;
+    if (isCustomer && viewer?.email) {
+      whereClause = { customer: { contactEmail: viewer.email } };
+    } else if (!isTeamOrFinance && viewer?.id) {
+      whereClause = {
+        quotation: {
+          OR: [{ createdById: viewer.id }, { salespersonId: viewer.id }],
+        },
+      };
+    }
+
     return this.prisma.invoice.findMany({
-      where: isCustomer && viewer?.email ? { customer: { contactEmail: viewer.email } } : undefined,
+      where: whereClause,
       orderBy: { createdAt: 'desc' },
-      include: { customer: true, quotation: { select: { id: true, number: true } } },
+      include: { customer: true, quotation: { select: { id: true, number: true, createdById: true, salespersonId: true } } },
     });
   }
 
@@ -35,7 +55,7 @@ export class BillingService {
       where: { id },
       include: {
         customer: true,
-        quotation: { select: { id: true, number: true } },
+        quotation: { select: { id: true, number: true, createdById: true, salespersonId: true } },
         lines: true,
         payments: { orderBy: { receivedAt: 'desc' } },
       },
@@ -46,24 +66,49 @@ export class BillingService {
       if (!invoice.customer?.contactEmail || invoice.customer.contactEmail !== viewer.email) {
         throw new ForbiddenException('You do not have access to this invoice');
       }
+    } else if (viewer) {
+      const isTeamOrFinance =
+        viewer.role === UserRole.ADMIN ||
+        viewer.role === UserRole.FINANCE ||
+        (viewer.permissions ?? []).includes(Permission.FINANCE_DATA_VIEW) ||
+        (viewer.permissions ?? []).includes(Permission.DEAL_VIEW_TEAM);
+
+      if (!isTeamOrFinance && viewer.id) {
+        const isOwner =
+          invoice.quotation?.createdById === viewer.id ||
+          invoice.quotation?.salespersonId === viewer.id;
+        if (!isOwner) {
+          throw new ForbiddenException('You do not have access to this invoice');
+        }
+      }
     }
 
     return invoice;
   }
 
   private async nextNumber(): Promise<string> {
-    const count = await this.prisma.invoice.count();
-    return `INV-${3000 + count + 1}`;
+    const latest = await this.prisma.invoice.findFirst({
+      orderBy: { createdAt: 'desc' },
+      select: { number: true },
+    });
+    let seq = 3001;
+    if (latest?.number) {
+      const match = latest.number.match(/(\d+)/);
+      if (match) seq = parseInt(match[1], 10) + 1;
+    }
+    const prefix = await this.appSettings.get('invoice_prefix', 'INV-');
+    return `${prefix}${seq}`;
   }
 
-  /** Generate an invoice from a fulfilled quotation (GST/INR). Idempotent per quotation. */
+  /** Generate an invoice from a fulfilled quotation (GST/INR). Idempotent per quotation for active invoices. */
   async generateFromQuotation(quotationId: string, actor: Actor) {
     const quote = await this.prisma.quotation.findUnique({
       where: { id: quotationId },
       include: { lines: { include: { product: true } }, invoices: true },
     });
     if (!quote) throw new NotFoundException(`Quotation ${quotationId} not found`);
-    if (quote.invoices.length > 0) return this.get(quote.invoices[0].id); // idempotent
+    const activeInvoices = quote.invoices.filter((inv) => inv.status !== InvoiceStatus.CANCELLED);
+    if (activeInvoices.length > 0) return this.get(activeInvoices[0].id); // idempotent
 
     const billable: QuotationStatus[] = [
       QuotationStatus.FULFILLED,
@@ -75,6 +120,9 @@ export class BillingService {
 
     const netSubtotal = Number(quote.subtotal) - Number(quote.discountTotal);
     const number = await this.nextNumber();
+    const paymentDays = await this.appSettings.getNumber('default_payment_terms_days', 30);
+    const paymentTerms = await this.appSettings.get('default_payment_terms', `Net ${paymentDays}`);
+    const dueDate = new Date(Date.now() + paymentDays * 24 * 60 * 60 * 1000);
 
     const invoice = await this.prisma.$transaction(async (tx) => {
       const created = await tx.invoice.create({
@@ -84,8 +132,8 @@ export class BillingService {
           quotationId,
           status: InvoiceStatus.ISSUED,
           issueDate: new Date(),
-          dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-          paymentTerms: 'Net 30',
+          dueDate,
+          paymentTerms,
           subtotal: netSubtotal,
           gstTotal: quote.taxTotal,
           total: quote.total,
@@ -131,18 +179,35 @@ export class BillingService {
     actor: Actor,
   ) {
     if (input.amount <= 0) throw new BadRequestException('Payment amount must be greater than zero');
-    const invoice = await this.get(invoiceId);
-    if (invoice.status === InvoiceStatus.CANCELLED) throw new ConflictException('Invoice is cancelled');
-    if (invoice.status === InvoiceStatus.PAID) throw new ConflictException('Invoice is already paid');
 
-    const newPaid = Number(invoice.paidAmount) + input.amount;
-    const total = Number(invoice.total);
-    if (newPaid > total + 0.01) {
-      throw new BadRequestException(`Payment exceeds outstanding balance (₹${(total - Number(invoice.paidAmount)).toFixed(2)})`);
-    }
-    const fullyPaid = newPaid >= total - 0.01;
+    return this.prisma.$transaction(async (tx) => {
+      // Lock invoice row to prevent concurrent payment race conditions
+      await tx.$queryRaw`SELECT id FROM invoices WHERE id = ${invoiceId} FOR UPDATE`;
 
-    await this.prisma.$transaction(async (tx) => {
+      const invoice = await tx.invoice.findUnique({
+        where: { id: invoiceId },
+        include: {
+          customer: true,
+          quotation: { select: { id: true, number: true, createdById: true, salespersonId: true } },
+          lines: true,
+          payments: { orderBy: { receivedAt: 'desc' } },
+        },
+      });
+      if (!invoice) throw new NotFoundException(`Invoice ${invoiceId} not found`);
+      if (invoice.status === InvoiceStatus.CANCELLED) throw new ConflictException('Invoice is cancelled');
+      if (invoice.status === InvoiceStatus.PAID) throw new ConflictException('Invoice is already paid');
+
+      const currentPaid = Number(invoice.paidAmount);
+      const total = Number(invoice.total);
+      const newPaid = currentPaid + input.amount;
+
+      if (newPaid > total + 0.01) {
+        throw new BadRequestException(
+          `Payment exceeds outstanding balance (₹${(total - currentPaid).toFixed(2)})`,
+        );
+      }
+      const fullyPaid = newPaid >= total - 0.01;
+
       await tx.payment.create({
         data: {
           invoiceId,
@@ -151,11 +216,18 @@ export class BillingService {
           reference: input.reference,
         },
       });
-      await tx.invoice.update({
+
+      const updated = await tx.invoice.update({
         where: { id: invoiceId },
         data: {
           paidAmount: newPaid,
           status: fullyPaid ? InvoiceStatus.PAID : InvoiceStatus.PARTIALLY_PAID,
+        },
+        include: {
+          customer: true,
+          quotation: { select: { id: true, number: true, createdById: true, salespersonId: true } },
+          lines: true,
+          payments: { orderBy: { receivedAt: 'desc' } },
         },
       });
 
@@ -172,23 +244,37 @@ export class BillingService {
           }
         }
       }
-    });
 
-    await this.audit.record({
-      actorId: actor.id,
-      actorName: actor.name,
-      entityType: 'Invoice',
-      entityId: invoiceId,
-      action: 'PAYMENT_RECORDED',
-      message: `₹${input.amount} recorded on ${invoice.number}${fullyPaid ? ' (paid in full)' : ''}`,
+      await this.audit.record({
+        actorId: actor.id,
+        actorName: actor.name,
+        entityType: 'Invoice',
+        entityId: invoiceId,
+        action: 'PAYMENT_RECORDED',
+        message: `₹${input.amount} recorded on ${invoice.number}${fullyPaid ? ' (paid in full)' : ''}`,
+      });
+
+      return updated;
     });
-    return this.get(invoiceId);
   }
 
   async cancel(invoiceId: string, actor: Actor) {
     const invoice = await this.get(invoiceId);
     if (invoice.status === InvoiceStatus.PAID) throw new ConflictException('Cannot cancel a paid invoice');
-    await this.prisma.invoice.update({ where: { id: invoiceId }, data: { status: InvoiceStatus.CANCELLED } });
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.invoice.update({ where: { id: invoiceId }, data: { status: InvoiceStatus.CANCELLED } });
+      if (invoice.quotationId) {
+        const q = await tx.quotation.findUnique({ where: { id: invoice.quotationId } });
+        if (q && [QuotationStatus.INVOICED, QuotationStatus.BILLING].includes(q.status as QuotationStatus)) {
+          await tx.quotation.update({
+            where: { id: invoice.quotationId },
+            data: { status: QuotationStatus.FULFILLED },
+          });
+        }
+      }
+    });
+
     await this.audit.record({
       actorId: actor.id,
       actorName: actor.name,

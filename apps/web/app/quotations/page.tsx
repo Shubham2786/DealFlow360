@@ -29,13 +29,31 @@ export default function QuotationsPage() {
   return (
     <AppShell>
       <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">
-            {isCustomer ? 'Commercial Proposals' : 'Quotations'}
-          </h1>
-          <p className="text-sm text-slate-500">
-            {isCustomer ? 'Proposals and orders prepared for your company.' : 'All deals in the system.'}
-          </p>
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900">
+              {isCustomer ? 'Commercial Proposals' : 'Quotations'}
+            </h1>
+            <p className="text-sm text-slate-500">
+              {isCustomer ? 'Proposals and orders prepared for your company.' : 'All deals in the system.'}
+            </p>
+          </div>
+
+          {isCustomer ? (
+            <Link
+              href="/products"
+              className="rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-700 transition"
+            >
+              + Place New Order
+            </Link>
+          ) : (
+            <Link
+              href="/quotations/new"
+              className="rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-700"
+            >
+              + New Quotation
+            </Link>
+          )}
         </div>
 
         <SectionCard title={isCustomer ? 'Your Proposals' : 'Deals'}>

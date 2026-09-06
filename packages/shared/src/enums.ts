@@ -30,7 +30,7 @@ export enum Permission {
 
 // Canonical role → permission matrix. Seed reads this; ADMIN gets everything.
 export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
-  [UserRole.USER]: [Permission.DEAL_VIEW_OWN, Permission.DEAL_CREATE, Permission.TASK_VIEW_OWN],
+  [UserRole.USER]: [Permission.DEAL_VIEW_OWN, Permission.DEAL_CREATE, Permission.TASK_VIEW_OWN, Permission.TASK_ALLOCATE],
   [UserRole.MANAGER]: [
     Permission.DEAL_VIEW_OWN,
     Permission.DEAL_VIEW_TEAM,
@@ -45,6 +45,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     Permission.FINANCE_TRANSACTION_APPROVE,
     Permission.FINANCE_REPORT_GENERATE,
     Permission.DEAL_APPROVE, // approves the finance step of a deal's approval chain
+    Permission.DEAL_VIEW_TEAM, // must be able to view all quotations to generate invoices
   ],
   [UserRole.ADMIN]: Object.values(Permission),
   [UserRole.CUSTOMER]: [Permission.DEAL_VIEW_OWN],

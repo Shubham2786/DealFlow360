@@ -1,6 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import Link from 'next/link';
 import { AppShell } from '@/components/app-shell';
 import { Badge, EmptyState, SectionCard } from '@/components/ui';
 import { api } from '@/lib/api';
@@ -47,6 +48,20 @@ export default function AdminUsersPage() {
     <AppShell>
       <div className="space-y-6">
         <div>
+          <div className="flex items-center gap-2 mb-3">
+            <Link
+              href="/admin/config"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-brand-700 hover:text-brand-900 bg-brand-50 hover:bg-brand-100 border border-brand-200 rounded-lg px-3 py-1.5 transition"
+            >
+              ← Back to Configuration
+            </Link>
+            <Link
+              href="/dashboard"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg px-3 py-1.5 transition"
+            >
+              Dashboard
+            </Link>
+          </div>
           <h1 className="text-2xl font-bold text-slate-900">User Management</h1>
           <p className="text-sm text-slate-500">Assign roles. Changing a role signs the user out of existing sessions.</p>
         </div>

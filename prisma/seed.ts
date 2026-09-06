@@ -84,26 +84,28 @@ async function main() {
   const usersByEmail = await seedUsers(roleByName);
   const salespersonId = usersByEmail['sam@dealflow.test'];
 
-  // ---- Products (INR / GST 18%) ----
+  // ---- Products (INR / GST 18%) with real cost prices ----
   const productSpecs = [
-    { sku: 'SKU-100', name: 'Laptop Pro 14', category: 'Hardware', basePrice: 85000, taxRate: 18 },
-    { sku: 'SKU-200', name: 'Mechanical Keyboard', category: 'Accessories', basePrice: 4500, taxRate: 18 },
-    { sku: 'SKU-300', name: 'Wireless Mouse', category: 'Accessories', basePrice: 1200, taxRate: 18 },
-    { sku: 'SKU-400', name: '4K Monitor 27"', category: 'Hardware', basePrice: 22000, taxRate: 18 },
-    { sku: 'SKU-500', name: 'Support Plan (Annual)', category: 'Services', basePrice: 40000, taxRate: 18, type: 'RECURRING' as const },
+    { sku: 'SKU-100', name: 'Laptop Pro 14', category: 'Hardware', basePrice: 85000, costPrice: 60000, taxRate: 18 },
+    { sku: 'SKU-200', name: 'Mechanical Keyboard', category: 'Accessories', basePrice: 4500, costPrice: 2200, taxRate: 18 },
+    { sku: 'SKU-300', name: 'Wireless Mouse', category: 'Accessories', basePrice: 1200, costPrice: 600, taxRate: 18 },
+    { sku: 'SKU-400', name: '4K Monitor 27"', category: 'Hardware', basePrice: 22000, costPrice: 14000, taxRate: 18 },
+    { sku: 'SKU-500', name: 'Support Plan (Annual)', category: 'Services', basePrice: 40000, costPrice: 10000, taxRate: 18, type: 'RECURRING' as const },
   ];
-  const products: Record<string, { id: string; basePrice: number }> = {};
+  const products: Record<string, { id: string; basePrice: number; costPrice: number }> = {};
   for (const p of productSpecs) {
     const created = await prisma.product.upsert({
       where: { sku: p.sku },
-      update: {},
+      update: { costPrice: new Prisma.Decimal(p.costPrice) },
       create: {
         sku: p.sku, name: p.name, category: p.category,
-        basePrice: new Prisma.Decimal(p.basePrice), taxRate: new Prisma.Decimal(p.taxRate),
+        basePrice: new Prisma.Decimal(p.basePrice),
+        costPrice: new Prisma.Decimal(p.costPrice),
+        taxRate: new Prisma.Decimal(p.taxRate),
         type: p.type ?? 'ONE_TIME',
       },
     });
-    products[p.sku] = { id: created.id, basePrice: p.basePrice };
+    products[p.sku] = { id: created.id, basePrice: p.basePrice, costPrice: p.costPrice };
   }
 
   // ---- Warehouses + Inventory ----
@@ -175,6 +177,31 @@ async function main() {
         where: { number: 'Q-1006' },
         include: { negotiation: { include: { token: true } } },
       });
+      if (q1006) {
+        const p1 = await prisma.product.findUnique({ where: { sku: 'SKU-100' } });
+        const p2 = await prisma.product.findUnique({ where: { sku: 'SKU-200' } });
+        const p4 = await prisma.product.findUnique({ where: { sku: 'SKU-400' } });
+        if (p1 && p2 && p4) {
+          await prisma.quotationLine.deleteMany({ where: { quotationId: q1006.id } });
+          await prisma.quotationLine.createMany({
+            data: [
+              { quotationId: q1006.id, productId: p1.id, qty: 2, unitPrice: new Prisma.Decimal(85000), discountPct: new Prisma.Decimal(0), taxRate: new Prisma.Decimal(0), lineTotal: new Prisma.Decimal(170000) },
+              { quotationId: q1006.id, productId: p2.id, qty: 1, unitPrice: new Prisma.Decimal(300000), discountPct: new Prisma.Decimal(0), taxRate: new Prisma.Decimal(0), lineTotal: new Prisma.Decimal(300000) },
+              { quotationId: q1006.id, productId: p4.id, qty: 1, unitPrice: new Prisma.Decimal(70000), discountPct: new Prisma.Decimal(0), taxRate: new Prisma.Decimal(0), lineTotal: new Prisma.Decimal(70000) },
+            ],
+          });
+          await prisma.quotation.update({
+            where: { id: q1006.id },
+            data: {
+              subtotal: new Prisma.Decimal(540000),
+              discountPct: new Prisma.Decimal(10),
+              discountTotal: new Prisma.Decimal(54000),
+              taxTotal: new Prisma.Decimal(0),
+              total: new Prisma.Decimal(486000),
+            },
+          });
+        }
+      }
       if (q1006 && !q1006.negotiation) {
         await prisma.negotiation.create({
           data: {

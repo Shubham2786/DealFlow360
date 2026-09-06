@@ -55,9 +55,9 @@ export class AuthController {
   @Post('login')
   @HttpCode(200)
   async login(@Body() dto: LoginDto, @Res({ passthrough: true }) res: Response) {
-    const tokens = await this.auth.login(dto);
+    const { tokens, user } = await this.auth.login(dto);
     this.setCookies(res, tokens);
-    return { ok: true };
+    return { ok: true, user };
   }
 
   @Post('refresh')

@@ -9,6 +9,6 @@ import { ApprovalRuleEngine } from './approval-rule.engine';
   imports: [AuthModule, forwardRef(() => QuotationsModule)],
   controllers: [ApprovalsController],
   providers: [ApprovalsService, ApprovalRuleEngine],
-  exports: [ApprovalsService],
+  exports: [ApprovalsService, ApprovalRuleEngine],
 })
 export class ApprovalsModule { }

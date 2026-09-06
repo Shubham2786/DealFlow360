@@ -32,6 +32,12 @@ export default function SignupPage() {
         className="w-full max-w-sm space-y-4 rounded-xl border border-slate-200 bg-white p-8 shadow-sm"
       >
         <div>
+          <Link
+            href="/auth/login"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-brand-700 hover:text-brand-900 bg-brand-50 hover:bg-brand-100 border border-brand-200 rounded-lg px-3 py-1.5 transition mb-3"
+          >
+            ← Back to Sign in
+          </Link>
           <h1 className="text-xl font-bold text-brand-700">Create your account</h1>
           <p className="text-sm text-slate-500">Get started with DealFlow360</p>
         </div>

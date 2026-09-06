@@ -1,17 +1,26 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import {
   AllocationSource,
   BackorderStatus,
   FulfillmentStatus,
+  Permission,
   QuotationStatus,
   ReservationStatus,
+  UserRole,
 } from '@dealflow/shared';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { DealStateMachine } from '../quotations/deal-state-machine';
 import { AllocationEngine, WarehouseAvailability } from './allocation.engine';
 
-type Actor = { id?: string; name?: string };
+type Actor = { id?: string; name?: string; role?: string; permissions?: string[] };
+
+export interface FulfillmentViewer {
+  id?: string;
+  role?: string;
+  permissions?: string[];
+}
 
 @Injectable()
 export class FulfillmentService {
@@ -22,19 +31,35 @@ export class FulfillmentService {
     private readonly audit: AuditService,
   ) { }
 
-  list() {
+  list(viewer?: FulfillmentViewer) {
+    const isTeam =
+      viewer?.role === UserRole.ADMIN ||
+      viewer?.role === UserRole.MANAGER ||
+      (viewer?.permissions ?? []).includes(Permission.TASK_ALLOCATE) ||
+      (viewer?.permissions ?? []).includes(Permission.DEAL_VIEW_TEAM);
+
+    let whereClause: Prisma.FulfillmentWhereInput | undefined;
+    if (!isTeam && viewer?.id) {
+      whereClause = {
+        quotation: {
+          OR: [{ createdById: viewer.id }, { salespersonId: viewer.id }],
+        },
+      };
+    }
+
     return this.prisma.fulfillment.findMany({
+      where: whereClause,
       orderBy: { createdAt: 'desc' },
-      include: { customer: true, quotation: { select: { id: true, number: true } }, lines: true },
+      include: { customer: true, quotation: { select: { id: true, number: true, createdById: true, salespersonId: true } }, lines: true },
     });
   }
 
-  async get(id: string) {
+  async get(id: string, viewer?: FulfillmentViewer) {
     const f = await this.prisma.fulfillment.findUnique({
       where: { id },
       include: {
         customer: true,
-        quotation: { select: { id: true, number: true, status: true } },
+        quotation: { select: { id: true, number: true, status: true, createdById: true, salespersonId: true } },
         lines: {
           include: {
             product: true,
@@ -46,28 +71,54 @@ export class FulfillmentService {
       },
     });
     if (!f) throw new NotFoundException(`Fulfillment ${id} not found`);
+
+    if (viewer) {
+      const isTeam =
+        viewer.role === UserRole.ADMIN ||
+        viewer.role === UserRole.MANAGER ||
+        (viewer.permissions ?? []).includes(Permission.TASK_ALLOCATE) ||
+        (viewer.permissions ?? []).includes(Permission.DEAL_VIEW_TEAM);
+
+      if (!isTeam && viewer.id) {
+        const isOwner =
+          f.quotation?.createdById === viewer.id ||
+          f.quotation?.salespersonId === viewer.id;
+        if (!isOwner) {
+          throw new ForbiddenException('You do not have access to this fulfillment order');
+        }
+      }
+    }
+
     return f;
   }
 
   private async nextNumber(): Promise<string> {
-    const count = await this.prisma.fulfillment.count();
-    return `F-${2000 + count + 1}`;
+    const latest = await this.prisma.fulfillment.findFirst({
+      orderBy: { createdAt: 'desc' },
+      select: { number: true },
+    });
+    let seq = 2001;
+    if (latest?.number) {
+      const match = latest.number.match(/(\d+)/);
+      if (match) seq = parseInt(match[1], 10) + 1;
+    }
+    return `F-${seq}`;
   }
 
   /** Convert an APPROVED quotation into a fulfillment order (one line per quotation line). */
   async createFromQuotation(quotationId: string, actor: Actor) {
-    const quote = await this.prisma.quotation.findUnique({
-      where: { id: quotationId },
-      include: { lines: true, fulfillment: true },
-    });
-    if (!quote) throw new NotFoundException(`Quotation ${quotationId} not found`);
-    if (quote.fulfillment) return this.get(quote.fulfillment.id); // idempotent
-    if (quote.status !== QuotationStatus.APPROVED) {
-      throw new ConflictException('Only APPROVED quotations can be converted to fulfillment');
-    }
-
     const number = await this.nextNumber();
     const fulfillment = await this.prisma.$transaction(async (tx) => {
+      const quote = await tx.quotation.findUnique({
+        where: { id: quotationId },
+        include: { lines: true, fulfillment: true },
+      });
+      if (!quote) throw new NotFoundException(`Quotation ${quotationId} not found`);
+      if (quote.fulfillment) return quote.fulfillment; // idempotent
+      if (quote.status !== QuotationStatus.APPROVED) {
+        throw new ConflictException('Only APPROVED quotations can be converted to fulfillment');
+      }
+
       const created = await tx.fulfillment.create({
         data: {
           number,
@@ -100,9 +151,9 @@ export class FulfillmentService {
       entityType: 'Fulfillment',
       entityId: fulfillment.id,
       action: 'FULFILLMENT_CREATED',
-      message: `${number} created from ${quote.number}`,
+      message: `${number} created for quotation ${quotationId}`,
     });
-    return this.get(fulfillment.id);
+    return this.get(fulfillment.id, actor);
   }
 
   /**
@@ -114,10 +165,14 @@ export class FulfillmentService {
     const fulfillment = await this.get(fulfillmentId);
 
     for (const line of fulfillment.lines) {
-      const outstanding = line.orderedQty - line.allocatedQty - line.backorderedQty;
-      if (outstanding <= 0) continue;
-
       await this.prisma.$transaction(async (tx) => {
+        // Re-read line inside the transaction to avoid race conditions
+        const freshLine = await tx.fulfillmentLine.findUnique({ where: { id: line.id } });
+        if (!freshLine) return;
+
+        const outstanding = freshLine.orderedQty - freshLine.allocatedQty - freshLine.backorderedQty;
+        if (outstanding <= 0) return;
+
         // Lock this product's inventory rows for the duration of the transaction.
         await tx.$queryRaw`SELECT id FROM inventory WHERE "productId" = ${line.productId} ORDER BY id FOR UPDATE`;
 
@@ -159,15 +214,15 @@ export class FulfillmentService {
           });
         }
 
-        const newAllocated = line.allocatedQty + plan.allocated;
-        const newBackordered = line.backorderedQty + plan.backordered;
+        const newAllocated = freshLine.allocatedQty + plan.allocated;
+        const newBackordered = freshLine.backorderedQty + plan.backordered;
         await tx.fulfillmentLine.update({
           where: { id: line.id },
           data: {
             allocatedQty: newAllocated,
             backorderedQty: newBackordered,
             status:
-              newAllocated >= line.orderedQty
+              newAllocated >= freshLine.orderedQty
                 ? FulfillmentStatus.ALLOCATED
                 : newAllocated > 0
                   ? FulfillmentStatus.PARTIALLY_ALLOCATED

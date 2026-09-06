@@ -15,6 +15,7 @@ describe('Edge Cases & Hardening', () => {
         quotation: {
           findUnique: jest.fn(),
           findMany: jest.fn(),
+          findFirst: jest.fn().mockResolvedValue(null),
           create: jest.fn(),
           update: jest.fn(),
           count: jest.fn().mockResolvedValue(0),
@@ -42,10 +43,20 @@ describe('Edge Cases & Hardening', () => {
         backorder: {
           updateMany: jest.fn(),
         },
+        $transaction: jest.fn((cb) => cb(mockPrisma)),
       };
       mockAudit = { record: jest.fn().mockResolvedValue(undefined) };
       stateMachine = new DealStateMachine();
-      service = new QuotationsService(mockPrisma, stateMachine, mockAudit);
+      const approvalEngine = new (require('../approvals/approval-rule.engine').ApprovalRuleEngine)();
+      const mockAppSettings = {
+        get: jest.fn().mockResolvedValue('Q-'),
+        getNumber: jest.fn((k, def) => Promise.resolve(def)),
+        getString: jest.fn((k, def) => Promise.resolve(def)),
+        getJSON: jest.fn((k, def) => Promise.resolve(def)),
+        getAll: jest.fn().mockResolvedValue({}),
+        setMany: jest.fn(),
+      };
+      service = new QuotationsService(mockPrisma, stateMachine, mockAudit, approvalEngine, mockAppSettings as any);
     });
 
     it('rejects quotation creation when customer does not exist', async () => {
@@ -162,6 +173,63 @@ describe('Edge Cases & Hardening', () => {
       );
       // Backorders cancelled
       expect(mockPrisma.backorder.updateMany).toHaveBeenCalled();
+    });
+
+    it('rejects customer order creation with empty line items', async () => {
+      await expect(
+        service.createCustomerOrder({ lines: [] }, { id: 'c1', email: 'rita@acme.test', role: UserRole.CUSTOMER, permissions: [] }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('rejects customer order creation if no customer record matches user email', async () => {
+      mockPrisma.customer.findFirst.mockResolvedValue(null);
+      await expect(
+        service.createCustomerOrder(
+          { lines: [{ productId: 'p1', qty: 2 }] },
+          { id: 'c1', email: 'unknown@test.com', role: UserRole.CUSTOMER, permissions: [] },
+        ),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('creates a customer order request in NEGOTIATION status with portal token', async () => {
+      mockPrisma.customer.findFirst.mockResolvedValue({
+        id: 'cust-acme',
+        name: 'Acme Corp',
+        quotations: [{ salespersonId: 'sales-sam' }],
+      });
+      mockPrisma.product.findMany.mockResolvedValue([
+        { id: 'p1', sku: 'SKU-100', basePrice: 10000, taxRate: 18, costPrice: 7000, active: true },
+      ]);
+      mockPrisma.quotation.create.mockImplementation((args: any) => ({
+        id: 'q-cust-1',
+        ...args.data,
+      }));
+
+      const res = await service.createCustomerOrder(
+        { lines: [{ productId: 'p1', qty: 2 }], notes: 'Deliver by Friday' },
+        { id: 'u-rita', email: 'rita@acme.test', role: UserRole.CUSTOMER, permissions: [] },
+      );
+
+      expect(res.quotation).toBeDefined();
+      expect(res.token).toMatch(/^portal-/);
+      expect(res.portalUrl).toBe(`/customer-portal/${res.token}`);
+      expect(mockPrisma.quotation.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            customerId: 'cust-acme',
+            salespersonId: 'sales-sam',
+            status: QuotationStatus.NEGOTIATION,
+            subtotal: 20000,
+            taxTotal: 3600,
+            total: 23600,
+          }),
+        }),
+      );
+      expect(mockAudit.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'CUSTOMER_ORDER_PLACED',
+        }),
+      );
     });
   });
 });

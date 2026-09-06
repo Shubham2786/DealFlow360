@@ -26,6 +26,7 @@ const NAV: { href: string; label: string; perm?: string; anyOf?: string[] }[] = 
 
 const CUSTOMER_NAV = [
   { href: '/dashboard', label: 'Dashboard' },
+  { href: '/products', label: 'Order Products' },
   { href: '/quotations', label: 'My Proposals' },
   { href: '/invoices', label: 'My Invoices' },
   { href: '/subscriptions', label: 'My Subscriptions' },
@@ -35,6 +36,8 @@ function initials(name?: string): string {
   if (!name) return '?';
   return name.split(' ').map((p) => p[0]).slice(0, 2).join('').toUpperCase();
 }
+
+import { ToastProvider } from '@/components/toast';
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -59,7 +62,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   });
 
   return (
-    <div className="flex min-h-screen">
+    <ToastProvider>
+      <div className="flex min-h-screen">
       <aside className="flex w-60 shrink-0 flex-col border-r border-slate-200 bg-white">
         <div className="px-5 py-4 text-lg font-bold text-brand-700">DealFlow360</div>
         <nav className="flex flex-1 flex-col gap-1 px-3">
@@ -113,5 +117,6 @@ export function AppShell({ children }: { children: ReactNode }) {
         <main className="flex-1 overflow-auto p-6">{children}</main>
       </div>
     </div>
+    </ToastProvider>
   );
 }

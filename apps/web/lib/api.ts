@@ -148,7 +148,7 @@ export const api = {
 
   auth: {
     login: (email: string, password: string) =>
-      apiFetch<{ ok: boolean }>('/auth/login', {
+      apiFetch<{ ok: boolean; user?: CurrentUser }>('/auth/login', {
         method: 'POST',
         body: JSON.stringify({ email, password }),
       }),
@@ -164,9 +164,28 @@ export const api = {
   quotations: {
     list: () => apiFetch<QuotationListItem[]>('/quotations'),
     get: (id: string) => apiFetch<QuotationDetail>(`/quotations/${id}`),
+    create: (input: CreateQuotationPayload) =>
+      apiFetch<QuotationDetail>('/quotations', { method: 'POST', body: JSON.stringify(input) }),
+    preview: (input: CreateQuotationPayload) =>
+      apiFetch<QuotationPreview>('/quotations/preview', { method: 'POST', body: JSON.stringify(input) }),
     submit: (id: string) => apiFetch(`/quotations/${id}/submit`, { method: 'POST' }),
     cancel: (id: string) => apiFetch(`/quotations/${id}/cancel`, { method: 'POST' }),
     revise: (id: string) => apiFetch(`/quotations/${id}/revise`, { method: 'POST' }),
+    applyCounterDiscount: (id: string, discountPct: number, message?: string) =>
+      apiFetch(`/quotations/${id}/apply-counter-discount`, {
+        method: 'POST',
+        body: JSON.stringify({ discountPct, message }),
+      }),
+    replyNegotiation: (id: string, message: string) =>
+      apiFetch(`/quotations/${id}/negotiation/reply`, {
+        method: 'POST',
+        body: JSON.stringify({ message }),
+      }),
+    createCustomerOrder: (input: { lines: { productId: string; qty: number }[]; notes?: string }) =>
+      apiFetch<{ quotation: QuotationDetail; token: string; portalUrl: string }>('/quotations/customer-order', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
   },
 
   products: {
@@ -234,7 +253,7 @@ export const api = {
   inventory: {
     list: () => apiFetch<InventoryItem[]>('/inventory'),
     warehouses: () => apiFetch<{ id: string; code: string; name: string; priority: number }[]>('/warehouses'),
-    receive: (input: { warehouseId: string; productId: string; quantity: number; reference: string }) =>
+    receive: (input: { warehouseId: string; productId: string; quantity: number }) =>
       apiFetch('/inventory/receive', { method: 'POST', body: JSON.stringify(input) }),
   },
 
@@ -429,7 +448,16 @@ export interface ApprovalRequestItem {
     discountPct: string;
     marginPct: string;
     status: string;
-    customer: { id: string; name: string } | null;
+    customer: { id: string; name: string; segment?: string } | null;
+    lines?: {
+      id: string;
+      qty: number;
+      unitPrice: string;
+      discountPct: string;
+      taxRate: string;
+      lineTotal: string;
+      product: { id: string; sku: string; name: string; category?: string; basePrice?: string };
+    }[];
   };
   steps: ApprovalStepItem[];
 }
@@ -459,7 +487,63 @@ export interface QuotationDetail extends QuotationListItem {
     discountPct: string;
     taxRate: string;
     lineTotal: string;
-    product: { id: string; sku: string; name: string };
+    product: { id: string; sku: string; name: string; category?: string; basePrice?: string };
   }[];
   invoices: { id: string; number: string; status: string; total: string }[];
+  negotiation?: {
+    id: string;
+    status: string;
+    token?: { token: string } | null;
+    messages: { id?: string; author: string; body: string; requestedDiscountPct?: number | null; createdAt: string }[];
+  } | null;
+}
+
+export interface QuotationLineInput {
+  productId: string;
+  qty: number;
+  unitPrice?: number;
+  discountPct?: number;
+}
+
+export interface CreateQuotationPayload {
+  customerId: string;
+  salespersonId?: string;
+  discountPct?: number;
+  expiresAt?: string;
+  lines: QuotationLineInput[];
+}
+
+export interface QuotationPreview {
+  subtotal: number;
+  discountPct: number;
+  discountTotal: number;
+  taxTotal: number;
+  total: number;
+  marginPct: number;
+  lines: {
+    productId: string;
+    productName: string;
+    category: string;
+    sku: string;
+    qty: number;
+    basePrice: number;
+    unitPrice: number;
+    discountPct: number;
+    taxRate: number;
+    lineTotal: number;
+  }[];
+  governance: {
+    chain: string[];
+    reasons: string[];
+    blendedRiskScore: number;
+    lineAssessments: {
+      productId?: string;
+      category: string;
+      effectiveDiscountPct: number;
+      ceilingDiscountPct: number;
+      exceeded: boolean;
+      excessDiscountPct: number;
+      unitPriceBypassDetected: boolean;
+    }[];
+  };
 }

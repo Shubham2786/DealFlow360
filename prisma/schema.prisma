@@ -116,6 +116,7 @@ model Product {
   category       String?
   type           ProductType     @default(ONE_TIME)
   basePrice      Decimal         @db.Decimal(14, 2)
+  costPrice      Decimal         @default(0) @db.Decimal(14, 2)
   currency       String          @default("INR")
   uom            String          @default("unit")
   taxRate        Decimal         @default(18) @db.Decimal(5, 2)

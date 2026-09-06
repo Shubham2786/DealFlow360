@@ -85,44 +85,65 @@ export function DealStatusBadge({ status }: { status: string }) {
   return <Badge kind={STATUS_KIND[status] ?? 'info'}>{status.replaceAll('_', ' ')}</Badge>;
 }
 
-/** Simplified lifecycle stepper for the main happy path. */
-const LIFECYCLE = [
-  'DRAFT',
-  'PENDING_APPROVAL',
-  'APPROVED',
-  'FULFILLING',
-  'BILLING',
-  'INVOICED',
-  'PAID',
-  'COMPLETED',
+interface LifecycleStage {
+  id: string;
+  label: string;
+  statuses: string[];
+}
+
+const LIFECYCLE_STAGES: LifecycleStage[] = [
+  { id: 'draft', label: 'Draft', statuses: ['DRAFT'] },
+  { id: 'approval', label: 'Approval', statuses: ['SUBMITTED', 'PENDING_APPROVAL'] },
+  { id: 'approved', label: 'Approved', statuses: ['APPROVED'] },
+  { id: 'fulfillment', label: 'Fulfillment', statuses: ['CONVERTED_TO_FULFILLMENT', 'FULFILLING', 'PARTIALLY_FULFILLED', 'FULFILLED'] },
+  { id: 'invoiced', label: 'Invoiced', statuses: ['BILLING', 'INVOICED'] },
+  { id: 'paid', label: 'Paid', statuses: ['PAID'] },
+  { id: 'completed', label: 'Completed', statuses: ['COMPLETED'] },
 ];
 
 export function LifecycleStepper({ status }: { status: string }) {
-  const current = LIFECYCLE.indexOf(status);
-  const cancelled = status === 'CANCELLED';
+  const currentStageIndex = LIFECYCLE_STAGES.findIndex((stage) => stage.statuses.includes(status));
+  const isBranch = ['NEGOTIATION', 'CHANGES_REQUESTED', 'REJECTED', 'CANCELLED'].includes(status);
+
   return (
-    <div className="flex flex-wrap items-center gap-1">
-      {LIFECYCLE.map((step, i) => {
-        const done = !cancelled && current >= 0 && i <= current;
-        const isCurrent = !cancelled && i === current;
+    <div className="flex flex-wrap items-center gap-1.5">
+      {LIFECYCLE_STAGES.map((stage, i) => {
+        const isDone = currentStageIndex >= 0 && i < currentStageIndex;
+        const isCurrent = currentStageIndex >= 0 && i === currentStageIndex;
         return (
           <span
-            key={step}
-            className={`rounded px-2 py-0.5 text-xs font-medium ${
+            key={stage.id}
+            className={`rounded px-2.5 py-1 text-xs font-semibold tracking-wide transition-colors ${
               isCurrent
-                ? 'bg-brand-600 text-white'
-                : done
-                  ? 'bg-brand-100 text-brand-700'
+                ? 'bg-brand-600 text-white shadow-sm'
+                : isDone
+                  ? 'bg-brand-100 text-brand-800'
                   : 'bg-slate-100 text-slate-400'
             }`}
           >
-            {step.replaceAll('_', ' ')}
+            {stage.label}
           </span>
         );
       })}
-      {cancelled && (
-        <span className="rounded bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
-          CANCELLED
+
+      {status === 'NEGOTIATION' && (
+        <span className="rounded bg-amber-100 border border-amber-300 px-2.5 py-1 text-xs font-semibold text-amber-800 animate-pulse">
+          🤝 Customer Negotiation
+        </span>
+      )}
+      {status === 'CHANGES_REQUESTED' && (
+        <span className="rounded bg-amber-100 border border-amber-300 px-2.5 py-1 text-xs font-semibold text-amber-800">
+          ⚠️ Changes Requested
+        </span>
+      )}
+      {status === 'REJECTED' && (
+        <span className="rounded bg-rose-100 border border-rose-300 px-2.5 py-1 text-xs font-semibold text-rose-800">
+          ✕ Rejected
+        </span>
+      )}
+      {status === 'CANCELLED' && (
+        <span className="rounded bg-slate-200 border border-slate-300 px-2.5 py-1 text-xs font-semibold text-slate-600 line-through">
+          Cancelled
         </span>
       )}
     </div>

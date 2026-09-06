@@ -91,7 +91,11 @@ export class DashboardService {
     const variant = viewer.role;
 
     // Deal queries are scoped to the viewer unless they have team visibility.
-    const dealScope = isTeam ? {} : { createdById: viewer.id };
+    // For sales reps, include deals where they are the salesperson (e.g. customer-submitted orders)
+    // as well as deals they created directly.
+    const dealScope = isTeam
+      ? {}
+      : { OR: [{ createdById: viewer.id }, { salespersonId: viewer.id }] };
 
     const [draftQuotations, pendingApprovals, approvedDeals, activeDeals, pipelineAgg] =
       await Promise.all([

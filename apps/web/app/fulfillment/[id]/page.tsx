@@ -45,7 +45,14 @@ export default function FulfillmentDetailPage() {
   return (
     <AppShell>
       <div className="space-y-6">
-        <Link href="/fulfillment" className="text-sm text-brand-600 hover:underline">← Back to fulfillment</Link>
+        <div>
+          <Link
+            href="/fulfillment"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-brand-700 hover:text-brand-900 bg-brand-50 hover:bg-brand-100 border border-brand-200 rounded-lg px-3 py-1.5 transition"
+          >
+            ← Back to Fulfillment
+          </Link>
+        </div>
 
         {f.isLoading && <EmptyState message="Loading order…" />}
         {f.isError && <p className="text-sm text-red-600">Fulfillment {id} could not be found.</p>}
